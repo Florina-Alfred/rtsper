@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: rtsper-lgtm
+    ports:
+      - "4317:4317"   # OTLP/gRPC
+      - "8888:8888"   # Collector Prometheus exporter
+      - "9090:9090"   # Prometheus UI
+      - "3000:3000"   # Grafana UI
+    volumes:
+      - ./collector-config.yaml:/etc/otel/config.yaml:ro
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./grafana.ini:/etc/grafana/grafana.ini:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
