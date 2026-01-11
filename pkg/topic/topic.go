@@ -207,7 +207,7 @@ func (m *Manager) PublishPacket(topicName string, pkt *InboundPacket) bool {
 		return false
 	}
 	// debug log
-	plog.Info("PublishPacket called for topic %s", topicName)
+	plog.Debug("PublishPacket called for topic %s", topicName)
 	metrics.IncPacketsReceived()
 
 	// ensure topic not closed to avoid sending on closed channel
