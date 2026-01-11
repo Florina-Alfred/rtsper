@@ -39,8 +39,19 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.h = h
 
+	// configure UDP addresses if enabled
+	mgrCfg := s.mgr.Config()
 	pubSrv := &gortsplib.Server{Handler: h, RTSPAddress: fmt.Sprintf(":%d", s.pubPort)}
+	if mgrCfg.EnableUDP && mgrCfg.PublisherUDPBase > 0 {
+		pubSrv.UDPRTPAddress = fmt.Sprintf(":%d", mgrCfg.PublisherUDPBase)
+		pubSrv.UDPRTCPAddress = fmt.Sprintf(":%d", mgrCfg.PublisherUDPBase+1)
+	}
+
 	subSrv := &gortsplib.Server{Handler: h, RTSPAddress: fmt.Sprintf(":%d", s.subPort)}
+	if mgrCfg.EnableUDP && mgrCfg.SubscriberUDPBase > 0 {
+		subSrv.UDPRTPAddress = fmt.Sprintf(":%d", mgrCfg.SubscriberUDPBase)
+		subSrv.UDPRTCPAddress = fmt.Sprintf(":%d", mgrCfg.SubscriberUDPBase+1)
+	}
 
 	s.mu.Lock()
 	s.pubSrv = pubSrv

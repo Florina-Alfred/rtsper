@@ -18,6 +18,10 @@ type Config struct {
 	PublisherQueueSize     int
 	SubscriberQueueSize    int
 	PublisherGracePeriod   time.Duration
+	// UDP support
+	EnableUDP         bool
+	PublisherUDPBase  int
+	SubscriberUDPBase int
 }
 
 // Manager manages topics and global counters
@@ -31,6 +35,13 @@ type Manager struct {
 // NewManager creates a new Topic Manager
 func NewManager(cfg Config) *Manager {
 	return &Manager{topics: make(map[string]*Topic), cfg: cfg}
+}
+
+// Config returns the manager's configuration
+func (m *Manager) Config() Config {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg
 }
 
 // Shutdown cleans up resources
