@@ -76,8 +76,8 @@ func main() {
 	if cfg.SubscribePort == 0 {
 		cfg.SubscribePort = *subscribePort
 	}
-	if cfg.PublisherGracePeriod == 0 {
-		cfg.PublisherGracePeriod = *publisherGrace
+	if cfg.PublisherGracePeriod.Duration == 0 {
+		cfg.PublisherGracePeriod.Duration = *publisherGrace
 	}
 	// flags override file values if explicitly provided
 	if *enableUDP {
@@ -106,6 +106,14 @@ func main() {
 			plog.Error("admin server error: %v", err)
 		}
 	}()
+
+	// validate UDP configuration if enabled
+	if cfg.EnableUDP {
+		if err := validateUDPConfig(cfg); err != nil {
+			plog.Error("invalid UDP configuration: %v", err)
+			os.Exit(1)
+		}
+	}
 
 	// start RTSP servers
 	rtspSrv := rtspsrv.NewServer(m, cfg.PublishPort, cfg.SubscribePort)

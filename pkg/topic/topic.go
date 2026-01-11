@@ -2,7 +2,9 @@ package topic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -10,6 +12,31 @@ import (
 )
 
 // Config holds configuration for TopicManager
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalJSON supports both numeric (nanoseconds) and string durations (eg "5s").
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	// try string first
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		dur, err := time.ParseDuration(s)
+		if err != nil {
+			return err
+		}
+		d.Duration = dur
+		return nil
+	}
+	// try as number (nanoseconds)
+	var n int64
+	if err := json.Unmarshal(b, &n); err == nil {
+		d.Duration = time.Duration(n)
+		return nil
+	}
+	return fmt.Errorf("invalid duration: %s", string(b))
+}
+
 type Config struct {
 	PublishPort            int
 	SubscribePort          int
@@ -17,7 +44,7 @@ type Config struct {
 	MaxSubscribersPerTopic int
 	PublisherQueueSize     int
 	SubscriberQueueSize    int
-	PublisherGracePeriod   time.Duration
+	PublisherGracePeriod   Duration
 	// UDP support
 	EnableUDP         bool
 	PublisherUDPBase  int
@@ -286,7 +313,7 @@ func (t *Topic) RemovePublisher() {
 		t.stream = nil
 	}
 	// start grace timer to cleanup
-	t.graceTimer = time.AfterFunc(t.cfg.PublisherGracePeriod, func() { t.Close() })
+	t.graceTimer = time.AfterFunc(t.cfg.PublisherGracePeriod.Duration, func() { t.Close() })
 }
 
 // PublisherID returns publisher id if any

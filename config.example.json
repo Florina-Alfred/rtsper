@@ -1,0 +1,12 @@
+{
+  "PublishPort": 9191,
+  "SubscribePort": 9192,
+  "EnableUDP": true,
+  "PublisherUDPBase": 5004,
+  "SubscriberUDPBase": 6004,
+  "MaxPublishers": 5,
+  "MaxSubscribersPerTopic": 5,
+  "PublisherQueueSize": 1024,
+  "SubscriberQueueSize": 256,
+  "PublisherGracePeriod": "5s"
+}

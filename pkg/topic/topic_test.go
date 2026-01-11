@@ -14,7 +14,7 @@ func TestRegisterPublisherAndUnregister(t *testing.T) {
 		MaxSubscribersPerTopic: 5,
 		PublisherQueueSize:     4,
 		SubscriberQueueSize:    4,
-		PublisherGracePeriod:   500 * time.Millisecond,
+		PublisherGracePeriod:   Duration{Duration: 500 * time.Millisecond},
 	}
 	m := NewManager(cfg)
 
@@ -56,7 +56,7 @@ func TestRegisterPublisherAndUnregister(t *testing.T) {
 }
 
 func TestMaxPublishers(t *testing.T) {
-	cfg := Config{MaxPublishers: 1, PublisherGracePeriod: time.Second}
+	cfg := Config{MaxPublishers: 1, PublisherGracePeriod: Duration{Duration: time.Second}}
 	m := NewManager(cfg)
 
 	if err := m.RegisterPublisher(context.Background(), "a", NewPublisherSession("p1")); err != nil {
@@ -68,7 +68,7 @@ func TestMaxPublishers(t *testing.T) {
 }
 
 func TestRegisterSubscriberLimits(t *testing.T) {
-	cfg := Config{MaxPublishers: 5, MaxSubscribersPerTopic: 1, PublisherGracePeriod: time.Second}
+	cfg := Config{MaxPublishers: 5, MaxSubscribersPerTopic: 1, PublisherGracePeriod: Duration{Duration: time.Second}}
 	m := NewManager(cfg)
 	// create topic by registering publisher
 	if err := m.RegisterPublisher(context.Background(), "topicX", NewPublisherSession("p1")); err != nil {
@@ -83,7 +83,7 @@ func TestRegisterSubscriberLimits(t *testing.T) {
 }
 
 func TestSetGetTopicStream(t *testing.T) {
-	cfg := Config{MaxPublishers: 5, PublisherGracePeriod: time.Second}
+	cfg := Config{MaxPublishers: 5, PublisherGracePeriod: Duration{Duration: time.Second}}
 	m := NewManager(cfg)
 	if err := m.RegisterPublisher(context.Background(), "tstream", NewPublisherSession("p1")); err != nil {
 		t.Fatalf("register publisher failed: %v", err)
