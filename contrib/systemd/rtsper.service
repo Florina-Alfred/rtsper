@@ -1,0 +1,18 @@
+[Unit]
+Description=rtsper RTSP relay service
+After=network.target
+
+[Service]
+Type=simple
+User=rtsp
+Group=rtsp
+WorkingDirectory=/opt/rtsper
+# Path to rtsper binary
+ExecStart=/opt/rtsper/rtsper -log-file /var/log/rtsper/rtsper.log -log-level=info -admin-port=8080
+Restart=on-failure
+RestartSec=5s
+# Optional: limit file descriptors if your setup needs many sockets
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

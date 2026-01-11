@@ -1,0 +1,42 @@
+# Prometheus configuration for scraping rtsper instances
+# Place this file under contrib/prometheus/ and start Prometheus with
+# `prometheus --config.file=/path/to/contrib/prometheus/prometheus.yml`.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Rule files (alerting/recording). See rules.yml in the same directory.
+rule_files:
+  - "rules.yml"
+
+scrape_configs:
+  - job_name: 'rtsper'
+    # Static single instance (default admin port 8080)
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: /metrics
+    scheme: http
+
+  - job_name: 'rtsper-cluster'
+    # Example: multiple rtsper instances in a cluster
+    static_configs:
+      - targets: ['rtsper1.example:8080', 'rtsper2.example:8080']
+    metrics_path: /metrics
+
+  - job_name: 'node'
+    # Optional node exporter (example). Remove if unused.
+    static_configs:
+      - targets: ['localhost:9100']
+
+# Example of relabeling to add an environment label or normalize instance
+# Uncomment and adapt if you need to rewrite labels per job
+#scrape_configs:
+#  - job_name: 'rtsper-with-relabel'
+#    static_configs:
+#      - targets: ['rtsper-prod-1:8080']
+#    relabel_configs:
+#      - source_labels: [__address__]
+#        target_label: instance
+#      - replacement: 'prod-cluster-a'
+#        target_label: cluster

@@ -1,0 +1,22 @@
+# Example alerting rules for rtsper. Copy into Prometheus rule_files or use Alertmanager.
+
+groups:
+  - name: rtsper.rules
+    rules:
+      - alert: NoActivePublishers
+        expr: rtsper_active_publishers == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No active rtsper publishers"
+          description: "No active publishers for 5 minutes"
+
+      - alert: HighPacketDropRate
+        expr: rate(rtsper_packets_dropped_total[1m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High packet drop rate on rtsper"
+          description: "More than 10 packets dropped per second (1m rate)"
