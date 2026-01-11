@@ -2,19 +2,34 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
-	plog "redalf.de/rtsper/pkg/log"
-	"syscall"
-	"time"
-
 	"redalf.de/rtsper/pkg/admin"
+	plog "redalf.de/rtsper/pkg/log"
 	"redalf.de/rtsper/pkg/rtspsrv"
 	"redalf.de/rtsper/pkg/topic"
+	"syscall"
+	"time"
 )
+
+func loadConfig(path string) (topic.Config, error) {
+	var cfg topic.Config
+	if path == "" {
+		return cfg, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, err
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
 
 func main() {
 	var (
@@ -26,24 +41,60 @@ func main() {
 		publisherQueueSize     = flag.Int("publisher-queue-size", 1024, "Per-topic inbound queue size")
 		subscriberQueueSize    = flag.Int("subscriber-queue-size", 256, "Per-subscriber queue size")
 		publisherGrace         = flag.Duration("publisher-grace", 5*time.Second, "Publisher grace period for reconnect")
+		// UDP options
+		enableUDP         = flag.Bool("enable-udp", false, "Enable UDP RTP/RTCP listeners")
+		publisherUDPBase  = flag.Int("publisher-udp-base", 0, "Publisher UDP base port (RTP). RTCP = base+1")
+		subscriberUDPBase = flag.Int("subscriber-udp-base", 0, "Subscriber UDP base port (RTP). RTCP = base+1")
+		configPath        = flag.String("config", "", "Path to JSON config file (optional)")
 	)
 	flag.Parse()
 
-	cfg := topic.Config{
-		PublishPort:            *publishPort,
-		SubscribePort:          *subscribePort,
-		MaxPublishers:          *maxPublishers,
-		MaxSubscribersPerTopic: *maxSubscribersPerTopic,
-		PublisherQueueSize:     *publisherQueueSize,
-		SubscriberQueueSize:    *subscriberQueueSize,
-		PublisherGracePeriod:   *publisherGrace,
+	fileCfg, err := loadConfig(*configPath)
+	if err != nil {
+		plog.Error("failed to load config: %v", err)
+		os.Exit(1)
 	}
 
-	mgr := topic.NewManager(cfg)
+	// Merge flags over file config. Flags that are non-default override file.
+	cfg := fileCfg
+	// basic defaults if file empty
+	if cfg.PublisherQueueSize == 0 {
+		cfg.PublisherQueueSize = *publisherQueueSize
+	}
+	if cfg.SubscriberQueueSize == 0 {
+		cfg.SubscriberQueueSize = *subscriberQueueSize
+	}
+	if cfg.MaxPublishers == 0 {
+		cfg.MaxPublishers = *maxPublishers
+	}
+	if cfg.MaxSubscribersPerTopic == 0 {
+		cfg.MaxSubscribersPerTopic = *maxSubscribersPerTopic
+	}
+	if cfg.PublishPort == 0 {
+		cfg.PublishPort = *publishPort
+	}
+	if cfg.SubscribePort == 0 {
+		cfg.SubscribePort = *subscribePort
+	}
+	if cfg.PublisherGracePeriod == 0 {
+		cfg.PublisherGracePeriod = *publisherGrace
+	}
+	// flags override file values if explicitly provided
+	if *enableUDP {
+		cfg.EnableUDP = true
+	}
+	if *publisherUDPBase != 0 {
+		cfg.PublisherUDPBase = *publisherUDPBase
+	}
+	if *subscriberUDPBase != 0 {
+		cfg.SubscriberUDPBase = *subscriberUDPBase
+	}
+
+	m := topic.NewManager(cfg)
 
 	// start admin server
 	mux := http.NewServeMux()
-	mux.HandleFunc("/status", admin.StatusHandler(mgr))
+	mux.HandleFunc("/status", admin.StatusHandler(m))
 	adminSrv := &http.Server{Addr: fmt.Sprintf(":%d", *adminPort), Handler: mux}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -52,12 +103,12 @@ func main() {
 	go func() {
 		plog.Info("admin: listening on %s", adminSrv.Addr)
 		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			plog.Info("admin server error: %v", err)
+			plog.Error("admin server error: %v", err)
 		}
 	}()
 
-	// start RTSP servers (rtspsrv stub for now)
-	rtspSrv := rtspsrv.NewServer(mgr, cfg.PublishPort, cfg.SubscribePort)
+	// start RTSP servers
+	rtspSrv := rtspsrv.NewServer(m, cfg.PublishPort, cfg.SubscribePort)
 	if err := rtspSrv.Start(ctx); err != nil {
 		plog.Error("failed to start rtsp servers: %v", err)
 		os.Exit(1)
@@ -74,5 +125,5 @@ func main() {
 	defer shutdownCancel()
 	adminSrv.Shutdown(shutdownCtx)
 	rtspSrv.Close()
-	mgr.Shutdown()
+	m.Shutdown()
 }
