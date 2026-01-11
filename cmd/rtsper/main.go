@@ -8,12 +8,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"redalf.de/rtsper/pkg/admin"
-	plog "redalf.de/rtsper/pkg/log"
-	"redalf.de/rtsper/pkg/rtspsrv"
-	"redalf.de/rtsper/pkg/topic"
 	"syscall"
 	"time"
+
+	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"redalf.de/rtsper/pkg/admin"
+	plog "redalf.de/rtsper/pkg/log"
+	"redalf.de/rtsper/pkg/metrics"
+	"redalf.de/rtsper/pkg/rtspsrv"
+	"redalf.de/rtsper/pkg/topic"
+	"redalf.de/rtsper/pkg/udpalloc"
 )
 
 func loadConfig(path string) (topic.Config, error) {
@@ -41,13 +48,39 @@ func main() {
 		publisherQueueSize     = flag.Int("publisher-queue-size", 1024, "Per-topic inbound queue size")
 		subscriberQueueSize    = flag.Int("subscriber-queue-size", 256, "Per-subscriber queue size")
 		publisherGrace         = flag.Duration("publisher-grace", 5*time.Second, "Publisher grace period for reconnect")
+		// logging options
+		logFile  = flag.String("log-file", "", "Path to log file (optional). If set, log rotation is enabled")
+		logLevel = flag.String("log-level", "info", "Log level: debug,info,warn,error")
+		// OTLP/OTEL endpoint
+		otelEndpoint = flag.String("otel-endpoint", "localhost:4317", "OTLP/gRPC collector endpoint (host:port). Empty to disable OTLP init.")
 		// UDP options
 		enableUDP         = flag.Bool("enable-udp", false, "Enable UDP RTP/RTCP listeners")
 		publisherUDPBase  = flag.Int("publisher-udp-base", 0, "Publisher UDP base port (RTP). RTCP = base+1")
 		subscriberUDPBase = flag.Int("subscriber-udp-base", 0, "Subscriber UDP base port (RTP). RTCP = base+1")
+		udpPortStart      = flag.Int("udp-port-start", 0, "Start of UDP port range for allocator (inclusive)")
+		udpPortEnd        = flag.Int("udp-port-end", 0, "End of UDP port range for allocator (inclusive)")
 		configPath        = flag.String("config", "", "Path to JSON config file (optional)")
 	)
 	flag.Parse()
+
+	// configure logging early
+	if *logFile != "" {
+		lj := &lumberjack.Logger{
+			Filename:   *logFile,
+			MaxSize:    100, // megabytes
+			MaxBackups: 7,
+			MaxAge:     30, // days
+		}
+		if err := plog.Configure(lj, *logLevel); err != nil {
+			plog.Error("invalid log level: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		if err := plog.Configure(os.Stdout, *logLevel); err != nil {
+			plog.Error("invalid log level: %v", err)
+			os.Exit(1)
+		}
+	}
 
 	fileCfg, err := loadConfig(*configPath)
 	if err != nil {
@@ -90,11 +123,75 @@ func main() {
 		cfg.SubscriberUDPBase = *subscriberUDPBase
 	}
 
+	// UDP allocator and validation
+	var allocatorRelease func()
+	var alloc *udpalloc.Allocator
+	if cfg.EnableUDP {
+		// if range provided via flags, use them; otherwise use example defaults
+		start := *udpPortStart
+		end := *udpPortEnd
+		if start == 0 || end == 0 {
+			start = 5000
+			end = 6000
+		}
+		var err error
+		alloc, err = udpalloc.NewAllocator(start, end)
+		if err != nil {
+			plog.Error("failed to create UDP allocator: %v", err)
+			os.Exit(1)
+		}
+		p1, rel1, err := alloc.ReservePair()
+		if err != nil {
+			plog.Error("failed to reserve publisher UDP pair: %v", err)
+			os.Exit(1)
+		}
+		cfg.PublisherUDPBase = p1
+		allocatorRelease = rel1
+
+		p2, rel2, err := alloc.ReservePair()
+		if err != nil {
+			plog.Error("failed to reserve subscriber UDP pair: %v", err)
+			// release previous
+			rel1()
+			os.Exit(1)
+		}
+		cfg.SubscriberUDPBase = p2
+		// wrap releases
+		allocatorRelease = func() {
+			rel1()
+			rel2()
+		}
+	}
+
+	// validate UDP configuration if enabled. If we used allocator (pre-bound), skip validation.
+	if cfg.EnableUDP && alloc == nil {
+		if err := validateUDPConfig(cfg); err != nil {
+			plog.Error("invalid UDP configuration: %v", err)
+			if allocatorRelease != nil {
+				allocatorRelease()
+			}
+			os.Exit(1)
+		}
+	}
+
+	// initialize OTLP metrics if requested
+	if *otelEndpoint != "" {
+		if err := metrics.InitOTLP(context.Background(), *otelEndpoint); err != nil {
+			plog.Error("failed to initialize OTLP metrics: %v", err)
+			if allocatorRelease != nil {
+				allocatorRelease()
+			}
+			os.Exit(1)
+		}
+	}
+
+	// create manager with final config
 	m := topic.NewManager(cfg)
 
 	// start admin server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", admin.StatusHandler(m))
+	mux.Handle("/metrics", promhttp.Handler())
 	adminSrv := &http.Server{Addr: fmt.Sprintf(":%d", *adminPort), Handler: mux}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,18 +204,13 @@ func main() {
 		}
 	}()
 
-	// validate UDP configuration if enabled
-	if cfg.EnableUDP {
-		if err := validateUDPConfig(cfg); err != nil {
-			plog.Error("invalid UDP configuration: %v", err)
-			os.Exit(1)
-		}
-	}
-
 	// start RTSP servers
-	rtspSrv := rtspsrv.NewServer(m, cfg.PublishPort, cfg.SubscribePort)
+	rtspSrv := rtspsrv.NewServer(m, cfg.PublishPort, cfg.SubscribePort, alloc)
 	if err := rtspSrv.Start(ctx); err != nil {
 		plog.Error("failed to start rtsp servers: %v", err)
+		if allocatorRelease != nil {
+			allocatorRelease()
+		}
 		os.Exit(1)
 	}
 
@@ -134,4 +226,7 @@ func main() {
 	adminSrv.Shutdown(shutdownCtx)
 	rtspSrv.Close()
 	m.Shutdown()
+	if allocatorRelease != nil {
+		allocatorRelease()
+	}
 }

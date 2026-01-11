@@ -3,30 +3,35 @@ package rtspsrv
 import (
 	"context"
 	"fmt"
+	"net"
 	plog "redalf.de/rtsper/pkg/log"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/base"
 
+	"redalf.de/rtsper/pkg/metrics"
 	"redalf.de/rtsper/pkg/topic"
+	"redalf.de/rtsper/pkg/udpalloc"
 )
 
 // Server holds RTSP servers for publisher and subscriber
 type Server struct {
-	mgr     *topic.Manager
-	pubPort int
-	subPort int
-	pubSrv  *gortsplib.Server
-	subSrv  *gortsplib.Server
-	mu      sync.Mutex
-	h       *serverHandler
+	mgr       *topic.Manager
+	pubPort   int
+	subPort   int
+	allocator *udpalloc.Allocator
+	pubSrv    *gortsplib.Server
+	subSrv    *gortsplib.Server
+	mu        sync.Mutex
+	h         *serverHandler
 }
 
-func NewServer(mgr *topic.Manager, pubPort, subPort int) *Server {
-	return &Server{mgr: mgr, pubPort: pubPort, subPort: subPort}
+func NewServer(mgr *topic.Manager, pubPort, subPort int, alloc *udpalloc.Allocator) *Server {
+	return &Server{mgr: mgr, pubPort: pubPort, subPort: subPort, allocator: alloc}
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -45,12 +50,56 @@ func (s *Server) Start(ctx context.Context) error {
 	if mgrCfg.EnableUDP && mgrCfg.PublisherUDPBase > 0 {
 		pubSrv.UDPRTPAddress = fmt.Sprintf(":%d", mgrCfg.PublisherUDPBase)
 		pubSrv.UDPRTCPAddress = fmt.Sprintf(":%d", mgrCfg.PublisherUDPBase+1)
+		// if allocator provided, use its pre-bound PacketConns
+		if s.allocator != nil {
+			pubSrv.ListenPacket = func(network, address string) (net.PacketConn, error) {
+				// extract port from address (e.g., ":5000" or "0.0.0.0:5000")
+				host, portStr, err := net.SplitHostPort(address)
+				if err != nil {
+					// fall back to naive parse
+					if len(address) > 0 && address[0] == ':' {
+						portStr = address[1:]
+					} else {
+						return nil, err
+					}
+				}
+				_ = host
+				port, err := strconv.Atoi(portStr)
+				if err == nil {
+					if pc, ok := s.allocator.GetConn(port); ok {
+						return pc, nil
+					}
+				}
+				// fallback to normal listen
+				return net.ListenPacket(network, address)
+			}
+		}
 	}
 
 	subSrv := &gortsplib.Server{Handler: h, RTSPAddress: fmt.Sprintf(":%d", s.subPort)}
 	if mgrCfg.EnableUDP && mgrCfg.SubscriberUDPBase > 0 {
 		subSrv.UDPRTPAddress = fmt.Sprintf(":%d", mgrCfg.SubscriberUDPBase)
 		subSrv.UDPRTCPAddress = fmt.Sprintf(":%d", mgrCfg.SubscriberUDPBase+1)
+		if s.allocator != nil {
+			subSrv.ListenPacket = func(network, address string) (net.PacketConn, error) {
+				host, portStr, err := net.SplitHostPort(address)
+				if err != nil {
+					if len(address) > 0 && address[0] == ':' {
+						portStr = address[1:]
+					} else {
+						return nil, err
+					}
+				}
+				_ = host
+				port, err := strconv.Atoi(portStr)
+				if err == nil {
+					if pc, ok := s.allocator.GetConn(port); ok {
+						return pc, nil
+					}
+				}
+				return net.ListenPacket(network, address)
+			}
+		}
 	}
 
 	s.mu.Lock()
@@ -95,16 +144,16 @@ type serverHandler struct {
 }
 
 func (h *serverHandler) OnConnOpen(ctx *gortsplib.ServerHandlerOnConnOpenCtx) {
-	plog.Info("conn open %v", ctx.Conn.NetConn().RemoteAddr())
+	plog.Debug("conn open %v", ctx.Conn.NetConn().RemoteAddr())
 }
 
 func (h *serverHandler) OnConnClose(ctx *gortsplib.ServerHandlerOnConnCloseCtx) {
-	plog.Info("conn close %v", ctx.Conn.NetConn().RemoteAddr())
+	plog.Debug("conn close %v", ctx.Conn.NetConn().RemoteAddr())
 }
 
 func (h *serverHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	plog.Info("describe %s", topicName)
+	plog.Debug("describe %s", topicName)
 	st := h.mgr.GetTopicStream(topicName)
 	if st != nil {
 		return &base.Response{StatusCode: base.StatusOK}, st, nil
@@ -114,9 +163,9 @@ func (h *serverHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*
 
 func (h *serverHandler) OnAnnounce(ctx *gortsplib.ServerHandlerOnAnnounceCtx) (*base.Response, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	plog.Info("announce %s", topicName)
+	plog.Debug("announce %s", topicName)
 	if !h.topicNameRe.MatchString(topicName) {
-		plog.Info("invalid topic name: %s", topicName)
+		plog.Debug("invalid topic name: %s", topicName)
 		return &base.Response{StatusCode: base.StatusBadRequest}, nil
 	}
 	// create publisher session id
@@ -138,7 +187,10 @@ func (h *serverHandler) OnAnnounce(ctx *gortsplib.ServerHandlerOnAnnounceCtx) (*
 }
 
 func (h *serverHandler) OnRecord(ctx *gortsplib.ServerHandlerOnRecordCtx) (*base.Response, error) {
-	plog.Info("record %s", ctx.Path)
+	plog.Debug("record %s", ctx.Path)
+	// increment packet metrics on RECORD to validate metrics plumbing
+	metrics.IncPacketsReceived()
+	metrics.IncPacketsDispatched()
 	return &base.Response{StatusCode: base.StatusOK}, nil
 }
 
@@ -154,12 +206,30 @@ func (h *serverHandler) OnPacketRTP(ctx *gortsplib.ServerHandlerOnPacketRTPCtx) 
 	if st == nil {
 		return
 	}
+	plog.Debug("OnPacketRTP for topic %s track %d", topicName, ctx.TrackID)
+	// increment received metric
+	metrics.IncPacketsReceived()
+	// write directly to ServerStream (this will reach readers)
 	st.WritePacketRTP(ctx.TrackID, ctx.Packet)
+	// increment dispatched metric
+	metrics.IncPacketsDispatched()
+
+	// marshal packet and publish into topic manager so topic dispatcher handles fanout and metrics
+	b, err := ctx.Packet.Marshal()
+	if err != nil {
+		plog.Info("failed to marshal RTP packet: %v", err)
+		return
+	}
+	pkt := &topic.InboundPacket{Track: ctx.TrackID, Raw: b}
+	if !h.mgr.PublishPacket(topicName, pkt) {
+		// drop counted inside PublishPacket as needed
+		plog.Debug("drop packet for topic %s", topicName)
+	}
 }
 
 func (h *serverHandler) OnSetup(ctx *gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	plog.Info("setup %s", topicName)
+	plog.Debug("setup %s", topicName)
 	st := h.mgr.GetTopicStream(topicName)
 	if st != nil {
 		return &base.Response{StatusCode: base.StatusOK}, st, nil
@@ -169,7 +239,7 @@ func (h *serverHandler) OnSetup(ctx *gortsplib.ServerHandlerOnSetupCtx) (*base.R
 
 func (h *serverHandler) OnPlay(ctx *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	plog.Info("play %s", topicName)
+	plog.Debug("play %s", topicName)
 	// create subscriber session with a reasonable queue size
 	subID := fmt.Sprintf("%p", ctx.Session)
 	sub := topic.NewSubscriberSession(subID, h.subscriberQSz)
@@ -196,7 +266,7 @@ func (h *serverHandler) OnSessionClose(ctx *gortsplib.ServerHandlerOnSessionClos
 	if topicName == "" {
 		return
 	}
-	plog.Info("session close for topic %s (isPublisher=%v)", topicName, isPub)
+	plog.Debug("session close for topic %s (isPublisher=%v)", topicName, isPub)
 	if isPub {
 		h.mgr.UnregisterPublisher(topicName)
 	} else {

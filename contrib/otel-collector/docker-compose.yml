@@ -4,6 +4,8 @@ services:
   lgtm:
     image: grafana/otel-lgtm:latest
     container_name: rtsper-lgtm
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "4317:4317"   # OTLP/gRPC
       - "8888:8888"   # Collector Prometheus exporter

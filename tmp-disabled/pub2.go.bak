@@ -1,0 +1,50 @@
+package main
+
+import (
+	"log"
+	"time"
+
+	"github.com/aler9/gortsplib"
+	"github.com/aler9/gortsplib/pkg/format/h264"
+	"github.com/pion/rtp"
+)
+
+func main() {
+	client := &gortsplib.Client{}
+	if err := client.Start("tcp", "localhost:8554"); err != nil {
+		log.Fatalf("start client: %v", err)
+	}
+	defer client.Close()
+
+	// create H264 track (sprop nil)
+	f, err := h264.New(96, nil)
+	if err != nil {
+		log.Fatalf("new h264: %v", err)
+	}
+	tracks := gortsplib.Tracks{f}
+
+	url := "rtsp://localhost:8554/topic3"
+	// Announce
+	if _, err := client.Announce(tracks, url); err != nil {
+		log.Fatalf("announce: %v", err)
+	}
+	log.Println("announced")
+
+	if err := client.Record(url); err != nil {
+		log.Fatalf("record: %v", err)
+	}
+	log.Println("recording")
+
+	for i := 0; i < 50; i++ {
+		p := &rtp.Packet{
+			Header:  rtp.Header{Version: 2, PayloadType: 96, SequenceNumber: uint16(i), Timestamp: uint32(i * 3000), SSRC: 12345},
+			Payload: []byte{0x00, 0x00, 0x01, 0x09},
+		}
+		if err := client.WritePacketRTP(f, p); err != nil {
+			log.Printf("write rtp error: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	log.Println("done")
+}

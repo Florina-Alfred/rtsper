@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"redalf.de/rtsper/pkg/metrics"
 )
 
 // Allocator reserves even RTP/RTCP port pairs from a configurable range.
@@ -13,7 +15,7 @@ type Allocator struct {
 	start int
 	end   int
 	mu    sync.Mutex
-	// map basePort -> reservation (rtpPort)
+	// map port -> reservation (net.PacketConn)
 	reserved map[int]net.PacketConn
 }
 
@@ -49,10 +51,13 @@ func (a *Allocator) ReservePair() (int, func(), error) {
 			rtp.Close()
 			continue
 		}
-		// success: keep RTCP conn also in map keyed by base p (we'll close both on release)
-		// store RTP conn; RTCP stored by a special key (p | 1)
+		// success: store both conns keyed by port
 		a.reserved[p] = rtp
 		a.reserved[p+1] = rtcp
+		num := 2
+		metrics.IncAllocatorReservations()
+		metrics.IncAllocatorReservedPairs()
+		_ = num
 		release := func() {
 			a.mu.Lock()
 			defer a.mu.Unlock()
@@ -68,4 +73,13 @@ func (a *Allocator) ReservePair() (int, func(), error) {
 		return p, release, nil
 	}
 	return 0, nil, errors.New("no available ports")
+}
+
+// GetConn returns the previously reserved PacketConn for a given port if present.
+// The returned net.PacketConn must NOT be closed by the caller (the allocator manages lifecycle).
+func (a *Allocator) GetConn(port int) (net.PacketConn, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	c, ok := a.reserved[port]
+	return c, ok
 }

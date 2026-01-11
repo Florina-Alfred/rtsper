@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/aler9/gortsplib"
+	plog "redalf.de/rtsper/pkg/log"
+	"redalf.de/rtsper/pkg/metrics"
 )
 
 // Config holds configuration for TopicManager
@@ -113,6 +115,8 @@ func (m *Manager) RegisterPublisher(ctx context.Context, name string, pub *Publi
 		m.topics[name] = t
 	}
 	m.publisherCount++
+	metrics.IncActivePublishers()
+	metrics.IncTotalPublishers()
 	return nil
 }
 
@@ -144,6 +148,7 @@ func (m *Manager) UnregisterPublisher(name string) {
 		if m.publisherCount > 0 {
 			m.publisherCount--
 		}
+		metrics.DecActivePublishers()
 	}
 }
 
@@ -156,6 +161,8 @@ func (m *Manager) RegisterSubscriber(ctx context.Context, name string, sub *Subs
 			return ErrTopicMaxSubscribers
 		}
 		t.AddSubscriber(sub)
+		metrics.IncActiveSubscribers()
+		metrics.IncTotalSubscribers()
 		return nil
 	}
 	return ErrNoActivePublisher
@@ -166,7 +173,12 @@ func (m *Manager) UnregisterSubscriber(name string, id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if t, ok := m.topics[name]; ok {
+		// only decrement active subscribers if a subscriber was actually removed
+		prev := len(t.subscribers)
 		t.RemoveSubscriber(id)
+		if len(t.subscribers) < prev {
+			metrics.DecActiveSubscribers()
+		}
 	}
 }
 
@@ -194,19 +206,33 @@ func (m *Manager) PublishPacket(topicName string, pkt *InboundPacket) bool {
 	if !ok {
 		return false
 	}
+	// debug log
+	plog.Info("PublishPacket called for topic %s", topicName)
+	metrics.IncPacketsReceived()
+
+	// ensure topic not closed to avoid sending on closed channel
+	t.mu.RLock()
+	closed := t.closed
+	inCh := t.in
+	t.mu.RUnlock()
+	if closed || inCh == nil {
+		return false
+	}
+
 	select {
-	case t.in <- pkt:
+	case inCh <- pkt:
 		return true
 	default:
 		// drop-oldest to prioritize live
 		select {
-		case <-t.in:
+		case <-inCh:
 		default:
 		}
 		select {
-		case t.in <- pkt:
+		case inCh <- pkt:
 			return true
 		default:
+			metrics.IncPacketsDropped()
 			return false
 		}
 	}
@@ -243,6 +269,7 @@ func NewTopic(name string, cfg Config) *Topic {
 func (t *Topic) dispatcher() {
 	for pkt := range t.in {
 		// naive fanout
+		metrics.IncPacketsDispatched()
 		t.mu.RLock()
 		for _, s := range t.subscribers {
 			// non-blocking enqueue
@@ -257,6 +284,7 @@ func (t *Topic) dispatcher() {
 				select {
 				case s.queue <- pkt:
 				default:
+					metrics.IncPacketsDropped()
 				}
 			}
 		}
@@ -361,6 +389,13 @@ func (t *Topic) Close() {
 			s.cancel()
 		}
 	}
+
+	// decrement active subscribers metric by the number of removed subscribers
+	removed := len(t.subscribers)
+	if removed > 0 {
+		metrics.AddActiveSubscribers(-int64(removed))
+	}
+
 	// close inbound
 	close(t.in)
 	// clear maps
