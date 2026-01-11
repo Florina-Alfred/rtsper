@@ -4,10 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	plog "redalf.de/rtsper/pkg/log"
 	"syscall"
 	"time"
 
@@ -50,16 +50,17 @@ func main() {
 	defer cancel()
 
 	go func() {
-		log.Printf("admin: listening on %s", adminSrv.Addr)
+		plog.Info("admin: listening on %s", adminSrv.Addr)
 		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("admin server error: %v", err)
+			plog.Info("admin server error: %v", err)
 		}
 	}()
 
 	// start RTSP servers (rtspsrv stub for now)
 	rtspSrv := rtspsrv.NewServer(mgr, cfg.PublishPort, cfg.SubscribePort)
 	if err := rtspSrv.Start(ctx); err != nil {
-		log.Fatalf("failed to start rtsp servers: %v", err)
+		plog.Error("failed to start rtsp servers: %v", err)
+		os.Exit(1)
 	}
 
 	// Wait for signal
@@ -67,7 +68,7 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	log.Printf("shutdown requested")
+	plog.Info("shutdown requested")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer shutdownCancel()

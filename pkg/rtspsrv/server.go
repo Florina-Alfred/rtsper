@@ -3,7 +3,7 @@ package rtspsrv
 import (
 	"context"
 	"fmt"
-	"log"
+	plog "redalf.de/rtsper/pkg/log"
 	"regexp"
 	"strings"
 	"sync"
@@ -48,15 +48,15 @@ func (s *Server) Start(ctx context.Context) error {
 	s.mu.Unlock()
 
 	go func() {
-		log.Printf("starting RTSP server (publishers) on :%d", s.pubPort)
+		plog.Info("starting RTSP server (publishers) on :%d", s.pubPort)
 		if err := pubSrv.Start(); err != nil {
-			log.Printf("pub server error: %v", err)
+			plog.Info("pub server error: %v", err)
 		}
 	}()
 	go func() {
-		log.Printf("starting RTSP server (subscribers) on :%d", s.subPort)
+		plog.Info("starting RTSP server (subscribers) on :%d", s.subPort)
 		if err := subSrv.Start(); err != nil {
-			log.Printf("sub server error: %v", err)
+			plog.Info("sub server error: %v", err)
 		}
 	}()
 	return nil
@@ -84,16 +84,16 @@ type serverHandler struct {
 }
 
 func (h *serverHandler) OnConnOpen(ctx *gortsplib.ServerHandlerOnConnOpenCtx) {
-	log.Printf("conn open %v", ctx.Conn.NetConn().RemoteAddr())
+	plog.Info("conn open %v", ctx.Conn.NetConn().RemoteAddr())
 }
 
 func (h *serverHandler) OnConnClose(ctx *gortsplib.ServerHandlerOnConnCloseCtx) {
-	log.Printf("conn close %v", ctx.Conn.NetConn().RemoteAddr())
+	plog.Info("conn close %v", ctx.Conn.NetConn().RemoteAddr())
 }
 
 func (h *serverHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	log.Printf("describe %s", topicName)
+	plog.Info("describe %s", topicName)
 	st := h.mgr.GetTopicStream(topicName)
 	if st != nil {
 		return &base.Response{StatusCode: base.StatusOK}, st, nil
@@ -103,16 +103,16 @@ func (h *serverHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*
 
 func (h *serverHandler) OnAnnounce(ctx *gortsplib.ServerHandlerOnAnnounceCtx) (*base.Response, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	log.Printf("announce %s", topicName)
+	plog.Info("announce %s", topicName)
 	if !h.topicNameRe.MatchString(topicName) {
-		log.Printf("invalid topic name: %s", topicName)
+		plog.Info("invalid topic name: %s", topicName)
 		return &base.Response{StatusCode: base.StatusBadRequest}, nil
 	}
 	// create publisher session id
 	pubID := fmt.Sprintf("%p", ctx.Session)
 	pub := topic.NewPublisherSession(pubID)
 	if err := h.mgr.RegisterPublisher(context.Background(), topicName, pub); err != nil {
-		log.Printf("register publisher failed: %v", err)
+		plog.Info("register publisher failed: %v", err)
 		return &base.Response{StatusCode: base.StatusBadRequest}, nil
 	}
 	// create ServerStream from tracks and set in topic
@@ -127,7 +127,7 @@ func (h *serverHandler) OnAnnounce(ctx *gortsplib.ServerHandlerOnAnnounceCtx) (*
 }
 
 func (h *serverHandler) OnRecord(ctx *gortsplib.ServerHandlerOnRecordCtx) (*base.Response, error) {
-	log.Printf("record %s", ctx.Path)
+	plog.Info("record %s", ctx.Path)
 	return &base.Response{StatusCode: base.StatusOK}, nil
 }
 
@@ -148,7 +148,7 @@ func (h *serverHandler) OnPacketRTP(ctx *gortsplib.ServerHandlerOnPacketRTPCtx) 
 
 func (h *serverHandler) OnSetup(ctx *gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	log.Printf("setup %s", topicName)
+	plog.Info("setup %s", topicName)
 	st := h.mgr.GetTopicStream(topicName)
 	if st != nil {
 		return &base.Response{StatusCode: base.StatusOK}, st, nil
@@ -158,12 +158,12 @@ func (h *serverHandler) OnSetup(ctx *gortsplib.ServerHandlerOnSetupCtx) (*base.R
 
 func (h *serverHandler) OnPlay(ctx *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
-	log.Printf("play %s", topicName)
+	plog.Info("play %s", topicName)
 	// create subscriber session with a reasonable queue size
 	subID := fmt.Sprintf("%p", ctx.Session)
 	sub := topic.NewSubscriberSession(subID, h.subscriberQSz)
 	if err := h.mgr.RegisterSubscriber(context.Background(), topicName, sub); err != nil {
-		log.Printf("register subscriber failed: %v", err)
+		plog.Info("register subscriber failed: %v", err)
 		return &base.Response{StatusCode: base.StatusServiceUnavailable}, nil
 	}
 	// store mapping to allow cleanup on session close
@@ -185,7 +185,7 @@ func (h *serverHandler) OnSessionClose(ctx *gortsplib.ServerHandlerOnSessionClos
 	if topicName == "" {
 		return
 	}
-	log.Printf("session close for topic %s (isPublisher=%v)", topicName, isPub)
+	plog.Info("session close for topic %s (isPublisher=%v)", topicName, isPub)
 	if isPub {
 		h.mgr.UnregisterPublisher(topicName)
 	} else {
