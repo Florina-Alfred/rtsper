@@ -21,10 +21,10 @@ Run options
 
 - Containerized (GHCR or local image):
   - Option A — Pull the image from GitHub Container Registry (GHCR):
-    1. Create `contrib/docker-compose/.env` (copy from `.env.example`) and set:
-       - `GHCR_OWNER` (your GHCR owner/organization)
-       - `GHCR_REPO` (repo name, e.g. `rtsper`)
-       - `COMMIT_SHA` (commit tag to pull, e.g. `fa99396`)
+    1. Create `contrib/docker-compose/.env` (copy from `.env.example`) and set the following values:
+       - `GHCR_OWNER` — your GitHub username or organization (lowercase), for example `florina-alfred`
+       - `GHCR_REPO` — repo name, for example `rtsper`
+       - `COMMIT_SHA` — the short commit SHA to pull (7 characters), for example `180bb0a`
     2. From `contrib/docker-compose` run:
        - `docker compose -f docker-compose-ghcr.yml up --pull always`
     3. The `rtsper` service will pull `ghcr.io/${GHCR_OWNER}/${GHCR_REPO}:${COMMIT_SHA}` and expose the same ports as the local run (9191/9192/8080).

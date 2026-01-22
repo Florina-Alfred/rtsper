@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+
 	"redalf.de/rtsper/pkg/topic"
 )
 

@@ -81,7 +81,13 @@ jobs:
           OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE_OWNER=$OWNER_LOWER" >> $GITHUB_ENV
 
+      - name: Compute short SHA
+        run: |
+          # create a 7-char short SHA for image tags
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
       - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
@@ -89,6 +95,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
+        if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -96,7 +103,7 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}
             ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
