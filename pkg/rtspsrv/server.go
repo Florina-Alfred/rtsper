@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net"
-	plog "redalf.de/rtsper/pkg/log"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	plog "redalf.de/rtsper/pkg/log"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/base"
