@@ -6,15 +6,45 @@ Overview
 - Topic names are tokenized: only characters matching `^[A-Za-z0-9_-]+$`.
 - Single active publisher per topic. Multiple subscribers allowed (configurable).
 
-Quick start
-1. Build:
-   - `go build -o rtsper ./cmd/rtsper`
-2. Run (TCP only):
-   - `./rtsper`
-3. Publish (TCP interleaved):
-   - `ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1`
-4. Play (TCP):
-   - `ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1`
+Run options
+
+- Local (build & run):
+  - Build the binary:
+    - `go build -o rtsper ./cmd/rtsper`
+  - Run the server (defaults to TCP interleaved):
+    - `./rtsper`
+  - Example publish (TCP interleaved):
+    - `ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1`
+  - Example play (TCP):
+    - `ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1`
+
+- Containerized (GHCR or local image):
+  - Option A — Pull the image from GitHub Container Registry (GHCR):
+    1. Create `contrib/docker-compose/.env` (copy from `.env.example`) and set:
+       - `GHCR_OWNER` (your GHCR owner/organization)
+       - `GHCR_REPO` (repo name, e.g. `rtsper`)
+       - `COMMIT_SHA` (commit tag to pull, e.g. `fa99396`)
+    2. From `contrib/docker-compose` run:
+       - `docker compose -f docker-compose-ghcr.yml up --pull always`
+    3. The `rtsper` service will pull `ghcr.io/${GHCR_OWNER}/${GHCR_REPO}:${COMMIT_SHA}` and expose the same ports as the local run (9191/9192/8080).
+
+  - Option B — Build and use a local image (no push to GHCR):
+    1. Build the image locally (from repo root):
+       - `docker build -f contrib/docker-compose/Dockerfile -t rtsper:local .`
+    2. Start the demo stack using the local image compose file (the original `docker-compose.yml` already builds the image):
+       - `cd contrib/docker-compose && docker compose up --build`
+
+  - Notes:
+    - The demo compose brings up `rtsper`, Prometheus, Grafana and a simple nginx HLS server.
+    - `rtsper` admin/metrics endpoint is available at `http://localhost:8080/metrics`.
+    - Prometheus UI: `http://localhost:9090`; Grafana UI: `http://localhost:3000` (admin/admin in the demo).
+
+Quick start (legacy)
+- Quick CLI example (same as before):
+  - Build: `go build -o rtsper ./cmd/rtsper`
+  - Run: `./rtsper`
+  - Publish: `ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1`
+  - Play: `ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1`
 
 Enable UDP (basic example)
 - Start server with UDP enabled and explicit base ports:
