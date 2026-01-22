@@ -1,3 +1,4 @@
+[![CI](https://github.com/Florina-Alfred/rtsper/actions/workflows/ci.yml/badge.svg)](https://github.com/Florina-Alfred/rtsper/actions/workflows/ci.yml)
 rtsper — Simple RTSP relay / distributor (MVP)
 
 Overview
