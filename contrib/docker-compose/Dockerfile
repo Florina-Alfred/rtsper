@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile to build a small rtsper demo image
 # Builds the binary using the Go toolchain and copies it into a slim runtime image.
 
-FROM golang:1.22 AS builder
+FROM golang:1.24 AS builder
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /rtsper ./cmd/rtsper
