@@ -1,6 +1,7 @@
 package topic
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,12 +12,12 @@ func TestTopicCloseDecrementsActiveSubscribers(t *testing.T) {
 	cfg := Config{MaxPublishers: 5, MaxSubscribersPerTopic: 5, PublisherQueueSize: 16, SubscriberQueueSize: 8, PublisherGracePeriod: Duration{Duration: 0}}
 	m := NewManager(cfg)
 	pub := NewPublisherSession("p1")
-	if err := m.RegisterPublisher(nil, "t1", pub); err != nil {
+	if err := m.RegisterPublisher(context.TODO(), "t1", pub); err != nil {
 		t.Fatalf("register publisher: %v", err)
 	}
 	// register a subscriber
 	sub := NewSubscriberSession("s1", 8)
-	if err := m.RegisterSubscriber(nil, "t1", sub); err != nil {
+	if err := m.RegisterSubscriber(context.TODO(), "t1", sub); err != nil {
 		t.Fatalf("register subscriber: %v", err)
 	}
 	// check gauge is 1
