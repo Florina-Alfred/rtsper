@@ -75,38 +75,6 @@ jobs:
       - name: Set up Docker buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Compute image owner (lowercase)
-        run: |
-          OWNER=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)
-          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
-          echo "IMAGE_OWNER=$OWNER_LOWER" >> $GITHUB_ENV
-
-      - name: Compute short SHA
-        run: |
-          # create a 7-char short SHA for image tags
-          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-
-      - name: Log in to GitHub Container Registry
-        # Skip GHCR login when running under local 'act' (env.ACT == 'true')
-        if: github.ref == 'refs/heads/main' && env.ACT != 'true'
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        # Skip build/push when running under local 'act' (env.ACT == 'true')
-        if: github.ref == 'refs/heads/main' && env.ACT != 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: contrib/docker-compose/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.repository }}
+      # NOTE: Image build & push moved to the security workflow so that Trivy
+      # image scanning runs first and only allows pushes when it succeeds.
+      # See .github/workflows/trivy-scan.yml for image publishing steps.
