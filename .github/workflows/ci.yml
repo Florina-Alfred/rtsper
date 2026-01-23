@@ -26,6 +26,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Clean Go module & build cache
+        # Ensure a clean module/cache directory before restoring cache to avoid
+        # tar extract conflicts on runners with prepopulated caches.
+        run: |
+          rm -rf "$HOME/go/pkg/mod" || true
+          rm -rf "$HOME/.cache/go-build" || true
+
       - name: Run Trivy filesystem scan (table)
         uses: aquasecurity/trivy-action@v1
         with:
@@ -52,11 +59,12 @@ jobs:
 
       - name: Upload Trivy results (artifact)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ github.run_id }}
           path: |
-            ./trivy-report* || true
+            ./trivy-report*
 
   # end trivy-scan
   test-and-build:
