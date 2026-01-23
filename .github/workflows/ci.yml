@@ -82,9 +82,64 @@ jobs:
             ./trivy-report*
 
   # end trivy-scan
-  test-and-build:
+  check-changes:
+    name: Check changed files
     needs: trivy-scan
     runs-on: ubuntu-latest
+    outputs:
+      non_md: ${{ steps.check.outputs.non_md }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine changed files
+        id: check
+        run: |
+          set -euo pipefail
+          echo "Checking changed files for event: ${GITHUB_EVENT_NAME}"
+          CHANGED=""
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            # attempt to fetch base sha
+            git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
+            CHANGED=$(git diff --name-only "$BASE_SHA" "${GITHUB_SHA}" || true)
+          else
+            # push event: compare with previous commit on the branch
+            git fetch --no-tags --depth=2 origin "${GITHUB_REF}" || true
+            PREV=$(git rev-parse "${GITHUB_SHA}^" 2>/dev/null || true)
+            if [ -n "$PREV" ]; then
+              CHANGED=$(git diff --name-only "$PREV" "${GITHUB_SHA}" || true)
+            else
+              CHANGED=$(git ls-tree -r --name-only "${GITHUB_SHA}" || true)
+            fi
+          fi
+
+          # Expose list for debugging
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Write changed files to output (multi-line safe)
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          printf '%s\n' "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Set non-md flag to gate heavy jobs
+          if echo "$CHANGED" | grep -vE '\.md$' | grep -q .; then
+            echo "non_md=true" >> $GITHUB_OUTPUT
+            echo "Non-md changes detected"
+          else
+            echo "non_md=false" >> $GITHUB_OUTPUT
+            echo "Only markdown changes detected"
+          fi
+
+
+  test-and-build:
+    needs: check-changes
+    runs-on: ubuntu-latest
+    if: needs.check-changes.outputs.non_md == 'true'
 
     steps:
       - name: Checkout
