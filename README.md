@@ -131,6 +131,4 @@ Notes:
 - Run tests: `go test ./... -v`
 - Format code: `gofmt -w .`
 
-## License
-
-MIT
+<!-- License removed from repository -->
