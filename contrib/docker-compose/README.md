@@ -1,42 +1,35 @@
 rtsper demo (Docker Compose)
 
-This directory contains a small Docker Compose demo stack for local testing:
-
-- rtsper: the RTSP relay (built from the repo)
-- prometheus: Prometheus server configured to scrape rtsper metrics
-- grafana: Grafana with provisioning to auto-add Prometheus datasource and import the rtsper dashboard
-- hls-proxy: a tiny Python-based static server to serve HLS files produced by `ffmpeg`
+This directory contains a small demo stack for local testing: `rtsper`, Prometheus, Grafana and a small HLS proxy.
 
 Quick start
 
-1. From the repository root, start the demo:
+1. From the repository root, start the demo using the prebuilt local image (preferred when you already have `rtsper:local`):
+
+   ```sh
+   cd contrib/docker-compose
+   docker compose up --no-build
+   ```
+
+2. If you do not have the local image, build it once and start the stack:
 
    ```sh
    cd contrib/docker-compose
    docker compose up --build
    ```
 
-2. Services
+Services (demo)
 
-   - rtsper (publisher port 9191, subscriber port 9192, admin/metrics 8080)
-   - prometheus UI: http://localhost:9090/
-   - grafana UI: http://localhost:3000/ (admin/admin) — change the password after first login
-   - hls-proxy: http://localhost:8088/ (serves the `./hls` directory)
+- rtsper: publisher 9191, subscriber 9192, admin/metrics 8080
+- Prometheus UI: http://localhost:9090/
+- Grafana UI: http://localhost:3000/ (default admin/admin in demo)
+- HLS proxy: http://localhost:8088/ (serves `./hls`)
 
 Grafana provisioning
 
-- Grafana is pre-configured to add a Prometheus datasource (`Prometheus` -> `http://prometheus:9090`) and to import the `contrib/grafana/dashboard.json` dashboard automatically.
-- If provisioning did not complete, you can import the dashboard manually via Dashboards -> Import and selecting the `contrib/grafana/dashboard.json` file.
-
-Plugins
-
-- The compose file attempts to install example plugins via the `GF_INSTALL_PLUGINS` environment variable. The example includes `marcusolsson-picture-panel` and `grafana-image-renderer` as placeholders; replace or extend with an RTSP-capable video plugin of your choice.
-
-HLS proxy usage
-
-- The `hls-proxy` service serves files from the `./hls` directory on the host. Use the provided script `contrib/proxy/rtsp-to-hls.sh` to produce HLS segments into that directory and view them at `http://localhost:8088/index.m3u8`.
+- Grafana is pre-configured to add a Prometheus datasource (`http://prometheus:9090`) and to import the `contrib/grafana/dashboard.json` dashboard. If provisioning did not complete, import the dashboard manually via Dashboards -> Import and select `contrib/grafana/dashboard.json`.
 
 Notes
 
-- The compose stack is for local development and demos only. Review and harden before using in production.
-- If you want Grafana to install a specific plugin, set the plugin id(s) in `docker-compose.yml` under `GF_INSTALL_PLUGINS`.
+- The compose stack is intended for local development only. Review and harden before using in production.
+- To change Grafana plugins, set `GF_INSTALL_PLUGINS` in `docker-compose.yml`.
