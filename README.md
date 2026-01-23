@@ -97,7 +97,7 @@ docker run --rm \
   -p 9191:9191 \
   -p 9192:9192 \
   -p 8080:8080 \
-  ghcr.io/Florina-Alfred/rtsper:latest \
+  ghcr.io/florina-alfred/rtsper:latest \
   --publish-port=9191 --subscribe-port=9192
 ```
 
