@@ -34,11 +34,16 @@ jobs:
           rm -rf "$HOME/.cache/go-build" || true
 
       - name: Run Trivy filesystem scan (table)
-        # The official Trivy Action tag may not be resolvable in some runners;
-        # run the Trivy container directly to produce a human-readable table.
-        run: |
-          docker run --rm -v "${{ github.workspace }}:/project" aquasecurity/trivy:latest \
-            fs --format table --severity CRITICAL,HIGH --exit-code 0 /project
+        # Pin trivy-action to a released version that supports SARIF and
+        # stable behavior on GitHub Actions runners.
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          scan-type: 'fs'
+          scan-path: '.'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
 
       - name: Save Trivy SARIF report
         continue-on-error: true
