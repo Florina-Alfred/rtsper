@@ -24,7 +24,7 @@ jobs:
           docker build -f contrib/docker-compose/Dockerfile -t rtsper:ci-scan .
 
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@v1
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: rtsper:ci-scan
           format: 'table'
