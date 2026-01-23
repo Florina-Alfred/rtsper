@@ -86,25 +86,49 @@ Notes:
   ffplay -rtsp_transport udp rtsp://localhost:9192/topic1
   ```
 
-### Containerized (demo compose)
+### Containerized (docker run)
 
-- The repository includes a demo docker-compose stack at `contrib/docker-compose/` that runs rtsper, Prometheus and Grafana for local testing.
+You can run the published image or a locally-built image with `docker run`. The image includes an entrypoint so flags can be passed directly to the server.
 
-- If you already have the image available locally (tagged `rtsper:local`), prefer using it instead of rebuilding:
+Usage (pull the latest published image):
 
-  ```sh
-  # Start the demo without rebuilding the image
-  cd contrib/docker-compose && docker compose up --no-build
+```sh
+docker run --rm \
+  -p 9191:9191 \
+  -p 9192:9192 \
+  -p 8080:8080 \
+  ghcr.io/Florina-Alfred/rtsper:latest \
+  --publish-port=9191 --subscribe-port=9192
+```
 
-  # Or build the image locally (first time)
-  cd contrib/docker-compose && docker compose up --build
-  ```
+Or, build locally from `contrib/docker-compose/` and run the local image:
 
-- Demo service ports:
+```sh
+cd contrib/docker-compose
+docker build -t rtsper:local .
+docker run --rm -p 9191:9191 -p 9192:9192 -p 8080:8080 rtsper:local --publish-port=9191 --subscribe-port=9192
+```
 
-  - rtsper: publisher 9191, subscriber 9192, admin/metrics 8080
-  - Prometheus UI: http://localhost:9090
-  - Grafana UI: http://localhost:3000 (default admin/admin in demo)
+Notes:
+
+- The container maps the RTSP publisher (ingest) port 9191, the subscriber (play) port 9192, and the admin/metrics port 8080 to the host. When running on the same machine you can use `localhost` to reach these ports.
+- If you run the container on a remote host, replace `localhost` in the examples below with the host IP or hostname.
+
+Publish a webcam (v4l2) from the host to the server's publish port (host-side):
+
+```sh
+ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
+  -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+  -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1
+```
+
+Play the relayed stream from the subscriber port:
+
+```sh
+ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1
+```
+
+If you prefer the demo compose stack (includes Prometheus/Grafana and a small HLS proxy) use the compose files in `contrib/docker-compose/` as documented there.
 
 ## Configuration file
 
