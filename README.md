@@ -59,6 +59,7 @@ Below is the previous high-level diagram restored and expanded. It shows the use
      |     +----- multiple subscribers attached to same topic (fan-out)
      |
      +----------- single active publisher for the topic (others rejected)
+```
 
 Observability & demo stack (optional):
  - Prometheus scrapes `http://rtsper:8080/metrics` for counters/gauges (topics, subscribers, packets).
