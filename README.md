@@ -1,74 +1,6 @@
-[![CI](https://github.com/Florina-Alfred/rtsper/actions/workflows/ci.yml/badge.svg)](https://github.com/Florina-Alfred/rtsper/actions/workflows/ci.yml)
-rtsper — Simple RTSP relay / distributor (MVP)
+[title] rtsper — Simple RTSP relay / distributor (MVP)
 
-CI Workflow
-
-Below is an ASCII diagram that shows the repository GitHub Actions workflow and the main steps it runs.
-
-```
-  +--------------------+
-  | GitHub: push / PR  |
-  +--------------------+
-            |
-            v
-  +--------------------+
-  | actions/checkout   |
-  +--------------------+
-            |
-            v
-  +--------------------+
-  | Setup Go toolchain |
-  +--------------------+
-            |
-            v
-  +---------------------------+
-  | gofmt / goimports / go vet|
-  +---------------------------+
-            |
-            v
-  +--------------------+
-  | staticcheck        |
-  +--------------------+
-            |
-            v
-  +--------------------+
-  | go test ./...      |
-  +--------------------+
-            |
-            v
-  +--------------------+
-  | Build linux binary |
-  +--------------------+
-            |
-            v
-  +---------------------------+
-  | setup qemu & docker buildx|
-  +---------------------------+
-            |
-            v
-  +--------------------+
-  | Build multi-arch   |
-  | container images   |
-  +--------------------+
-            |
-            v
-  +-----------------------------------------+
-  | Conditional: if ref==refs/heads/main    |
-  |            && ACT!='true'               |
-  +-----------------------------------------+
-            |
-            v
-  +--------------------+     +------------------+
-  | docker login GHCR  | --> | docker push imgs |
-  +--------------------+     +------------------+
-            |
-            v
-         [done]
-```
-
-Notes:
-- Tags use a short SHA (7 chars) and `IMAGE_OWNER` is lowercased for GHCR.
-- The workflow skips GHCR login/push when running under `act` (env `ACT=true`), so local CI runs don't require secrets.
+Minimal RTSP relay server. The repository focuses on the server runtime and usage examples. See `docs/USAGE.md` for quickstart, examples and configuration details. Optional CI/maintenance notes live in `docs/CI.md`.
 
 Overview
 - rtsper accepts RTSP publishers and relays streams to RTSP subscribers.
@@ -161,26 +93,19 @@ Run options
   - Example play (TCP):
     - `ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1`
 
-- Containerized (GHCR or local image):
-  - Option A — Pull the image from GitHub Container Registry (GHCR):
-    1. Create `contrib/docker-compose/.env` (copy from `.env.example`) and set the following values:
-       - `GHCR_OWNER` — your GitHub username or organization (lowercase), for example `florina-alfred`
-       - `GHCR_REPO` — repo name, for example `rtsper`
-       - `COMMIT_SHA` — the short commit SHA to pull (7 characters), for example `180bb0a`
-    2. From `contrib/docker-compose` run:
-       - `docker compose -f docker-compose-ghcr.yml up --pull always`
-    3. The `rtsper` service will pull `ghcr.io/${GHCR_OWNER}/${GHCR_REPO}:${COMMIT_SHA}` and expose the same ports as the local run (9191/9192/8080).
+ - Containerized (local image):
+   - Build and use a local image (no push to remote registry):
+     1. Build the image locally (from repo root):
+        - `docker build -f contrib/docker-compose/Dockerfile -t rtsper:local .`
+     2. Start the demo stack using the local image compose file (the original `docker-compose.yml` already builds the image):
+        - `cd contrib/docker-compose && docker compose up --build`
 
-  - Option B — Build and use a local image (no push to GHCR):
-    1. Build the image locally (from repo root):
-       - `docker build -f contrib/docker-compose/Dockerfile -t rtsper:local .`
-    2. Start the demo stack using the local image compose file (the original `docker-compose.yml` already builds the image):
-       - `cd contrib/docker-compose && docker compose up --build`
+   - Notes:
+     - The demo compose brings up `rtsper`, Prometheus, Grafana and a simple nginx HLS server.
+     - `rtsper` admin/metrics endpoint is available at `http://localhost:8080/metrics`.
+     - Prometheus UI: `http://localhost:9090`; Grafana UI: `http://localhost:3000` (admin/admin in the demo).
 
-  - Notes:
-    - The demo compose brings up `rtsper`, Prometheus, Grafana and a simple nginx HLS server.
-    - `rtsper` admin/metrics endpoint is available at `http://localhost:8080/metrics`.
-    - Prometheus UI: `http://localhost:9090`; Grafana UI: `http://localhost:3000` (admin/admin in the demo).
+   - If you need CI/publishing details (optional registries, scanning), see `docs/CI.md`.
 
 Quick start (legacy)
 - Quick CLI example (same as before):
