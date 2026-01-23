@@ -123,4 +123,69 @@ Local Repro Steps for Developers
 
 Contact & Follow-up
 - If agents detect missing conventions or want to add linter/CI configs, propose changes with a short rationale and ask for approval.
+---
 
+Additional agent rules (important)
+
+- Editing constraints
+  - Default to ASCII when editing or creating files. Only introduce non-ASCII when the file already uses it and there is a clear justification.
+  - Add comments only when necessary to explain non-obvious blocks.
+  - Prefer the repository's editing tools: use the provided Read/Edit/Write helpers; avoid ad-hoc shell file edits when a higher-level tool is available.
+
+- Tool usage guidance
+  - Prefer specialized file tools over raw shell for file operations: use Read to view files, Edit to modify files, Write only when needed.
+  - Use Glob to find files and Grep to search file contents.
+  - Use Bash for terminal operations (git, builds, running tests).
+  - When running multiple independent commands, run them in parallel where possible; otherwise run sequentially.
+
+- Git and workspace hygiene (CRITICAL)
+  - NEVER run destructive commands like `git reset --hard` or `git checkout --` unless explicitly requested.
+  - NEVER amend commits unless explicitly requested and safe (see Amend rules below).
+  - Do not revert or discard changes you did not make unless asked.
+  - Do not push to remote unless the user explicitly asks you to do so.
+
+- Commit rules and safety protocol
+  - Do not create commits unless the user explicitly asks you to commit changes.
+  - When asked to commit, follow these steps:
+    1) Run `git status` and `git diff` to understand uncommitted changes.
+    2) Stage only relevant files.
+    3) Write a concise commit message that focuses on the why, not the what (1-2 sentences).
+    4) If a commit fails due to pre-commit hooks, fix the issue and create a NEW commit (do not amend) unless all amend rules apply.
+  - Amend rules (only amend when ALL are true): user asked to amend OR the HEAD commit was created by you in this session AND the amend is local AND HEAD has not been pushed.
+
+- Creating pull requests
+  - Use the repository's CI definitions and the GitHub CLI (`gh`) if available for PR operations.
+  - When the user asks you to create a PR, gather the current branch state (`git status`, `git diff`, `git log`) and draft a PR body summarizing changes.
+  - Ask for confirmation only if an action is destructive, touches production credentials, or requires secrets.
+
+- CI / Workflows
+  - Prefer the repository's `.github/workflows/*` for authoritative CI behavior. If you modify workflows, validate YAML syntax before pushing.
+  - The repository uses a Trivy scan that must run first and should run for docs-only changes too. Heavy CI (tests/build/publish) is gated to skip for markdown-only changes.
+  - Keep SARIF upload/report steps tolerant (continue-on-error) to avoid blocking the pipeline.
+
+- Frontend and design tasks
+  - When modifying frontend code, follow the project's existing design system. If creating new UI, prefer purposeful typography, color variables, and a few meaningful animations.
+
+- Presenting your work
+  - Be concise and practical in messaging. When making code changes:
+    - Lead with a quick explanation of the change and why.
+    - Reference file paths you modified (use inline `path/to/file` style).
+    - Suggest logical next steps (tests, build, verify commands).
+  - Ask questions only when blocked: one targeted question with a recommended default.
+
+- What to do when files are missing
+  - Propose minimal configs and ask for approval before adding them.
+
+---
+
+Local Repro Steps for Developers (quick)
+- Ensure Go is installed: `go version` (target `go1.22+`).
+- Install helper tools if needed:
+  - `go install golang.org/x/tools/cmd/goimports@latest`
+  - `go install honnef.co/go/tools/cmd/staticcheck@latest`
+- Quick verification to run before PRs:
+  - `gofmt -w .`
+  - `goimports -w .`
+  - `go vet ./...`
+  - `staticcheck ./...` (optional)
+  - `go test ./... -v`
