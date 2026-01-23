@@ -1,11 +1,153 @@
 [![CI](https://github.com/Florina-Alfred/rtsper/actions/workflows/ci.yml/badge.svg)](https://github.com/Florina-Alfred/rtsper/actions/workflows/ci.yml)
 rtsper — Simple RTSP relay / distributor (MVP)
 
+CI Workflow
+
+Below is an ASCII diagram that shows the repository GitHub Actions workflow and the main steps it runs.
+
+```
+  +--------------------+
+  | GitHub: push / PR  |
+  +--------------------+
+            |
+            v
+  +--------------------+
+  | actions/checkout   |
+  +--------------------+
+            |
+            v
+  +--------------------+
+  | Setup Go toolchain |
+  +--------------------+
+            |
+            v
+  +---------------------------+
+  | gofmt / goimports / go vet|
+  +---------------------------+
+            |
+            v
+  +--------------------+
+  | staticcheck        |
+  +--------------------+
+            |
+            v
+  +--------------------+
+  | go test ./...      |
+  +--------------------+
+            |
+            v
+  +--------------------+
+  | Build linux binary |
+  +--------------------+
+            |
+            v
+  +---------------------------+
+  | setup qemu & docker buildx|
+  +---------------------------+
+            |
+            v
+  +--------------------+
+  | Build multi-arch   |
+  | container images   |
+  +--------------------+
+            |
+            v
+  +-----------------------------------------+
+  | Conditional: if ref==refs/heads/main    |
+  |            && ACT!='true'               |
+  +-----------------------------------------+
+            |
+            v
+  +--------------------+     +------------------+
+  | docker login GHCR  | --> | docker push imgs |
+  +--------------------+     +------------------+
+            |
+            v
+         [done]
+```
+
+Notes:
+- Tags use a short SHA (7 chars) and `IMAGE_OWNER` is lowercased for GHCR.
+- The workflow skips GHCR login/push when running under `act` (env `ACT=true`), so local CI runs don't require secrets.
+
 Overview
 - rtsper accepts RTSP publishers and relays streams to RTSP subscribers.
 - TCP-interleaved is the default transport (MVP). UDP is supported optionally.
 - Topic names are tokenized: only characters matching `^[A-Za-z0-9_-]+$`.
 - Single active publisher per topic. Multiple subscribers allowed (configurable).
+
+App architecture (detailed ASCII)
+
+Below is the previous high-level diagram restored and expanded. It shows the user roles (Publisher, Subscriber, Admin), network boundaries (user LAN, Internet, server/container), transports (TCP interleaved vs UDP/RTP pairs), and optional components (allocator, HLS, Prometheus/Grafana). Read the arrows left-to-right for publish -> relay -> subscribe, and the dotted lines for observability/ops.
+
+```
+  [Publisher User]
+  - runs ffmpeg/encoder locally on laptop / edge device
+  - sits on LAN or behind NAT
+  +----------------------+                       INTERNET / LAN NAT
+  | Laptop / Device      |                                  |
+  | ffmpeg (push)        | - RTSP (tcp/udp) to :9191        v
+  |                      |                                  |
+  |  Quick command:      |  Example (TCP interleaved):      |
+  |  ffmpeg -f v4l2 ...  |  ffmpeg -f v4l2 -framerate 30   |
+  |  rtsp://<host>:9191/ |    -video_size 640x480 -i /dev/video0 |
+  |  topic1              |    -c:v libx264 -preset veryfast  \
+  +----------+-----------+    -tune zerolatency -pix_fmt yuv420p \
+             |                -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1
+             | (push)
+             |                                      +---------------+
+             |                                      |  rtsper       |
+             |                                      |  (container)  |
+             |                                      |               |
+             |                                      |  Listener     |  <--- binds PublishPort (:9191)
+             |                                      |  Topic Manager|  (accepts single active publisher per topic)
+             |                                      |  Queues       |
+             |                                      |  Dispatcher   |  <--- dispatches to subscribers
+             |                                      |  UDP Allocator|  (optional: pre-bind RTP/RTCP pairs)
+             |                                      |  HLS Output   |  (optional)
+             |                                      |  Metrics HTTP |  (admin: :8080/metrics)
+             |                                      +-------+-------+
+             |                                              |
+             |                                              | RTSP (tcp interleaved)
+             |                                              | or RTP/UDP pairs (via allocator)
+             |                                              v
+  +----------v-----------+                          +-------+-------+
+  |  Subscriber(s)       |                          |  Admin / Ops  |
+  |  (ffplay, RTSP pull) |                          |  (prometheus, |
+  |                      |                          |   grafana)    |
+  |  Quick command:      |                          |               |
+  |  ffplay (TCP):       |                          |  Quick checks:|
+  |  ffplay -rtsp_transport tcp \
+  |    rtsp://localhost:9192/topic1 |           |  curl http://localhost:8080/metrics |
+  +----------------------+                          |  docker compose up -d (demo) |
+     ^     ^   ^                                     +---------------+
+     |     |   | pull from rtsper (:9192)
+     |     |   +-- Subscriber may be local or remote (NAT, firewall)
+     |     |
+     |     +----- multiple subscribers attached to same topic (fan-out)
+     |
+     +----------- single active publisher for the topic (others rejected)
+
+Observability & demo stack (optional):
+ - Prometheus scrapes `http://rtsper:8080/metrics` for counters/gauges (topics, subscribers, packets).
+ - Grafana reads Prometheus to display dashboards; demo compose includes a prebuilt dashboard.
+ - HLS nginx can be used to serve HLS fragments generated from streams for HTTP playback.
+
+Where the user is:
+ - Publisher user: runs ffmpeg on a laptop/edge device and opens an outbound RTSP connection to rtsper:9191 (often behind NAT).
+ - Subscriber user: runs ffplay or an RTSP client and connects to rtsper:9192 to receive the stream.
+ - Admin/Ops: accesses metrics/UI (Prometheus/Grafana) and may operate rtsper from the host/container environment.
+
+Transport details (quick):
+ - TCP interleaved (default): RTSP control and RTP/RTCP travel over the same TCP connection — good for NAT traversal and simple setups.
+ - UDP (optional): rtsper or the allocator binds even/odd RTP/RTCP port pairs and forwards packets; lower latency but requires firewall and NAT configuration.
+
+Notes:
+ - Topic names are tokenized and restricted (alphanumeric, underscore, dash).
+ - A topic has at most one active publisher; additional publishers for the same topic are rejected or queued per configuration.
+ - When using UDP allocator, ensure the configured port range is open and even/odd pairs are available.
+
+
 
 Run options
 
