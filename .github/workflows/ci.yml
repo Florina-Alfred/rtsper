@@ -37,11 +37,15 @@ jobs:
           vuln-type: 'os,library'
 
       - name: Save Trivy SARIF report
+        continue-on-error: true
         run: |
+          # Try to produce SARIF; tolerate failures to avoid blocking the pipeline.
           docker run --rm -v "${{ github.workspace }}:/project" aquasecurity/trivy:latest \
             fs --format sarif --severity CRITICAL,HIGH --exit-code 0 --output /project/trivy-report-${{ github.run_id }}.sarif /project || true
 
       - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: ./trivy-report-${{ github.run_id }}.sarif
@@ -111,7 +115,7 @@ jobs:
   build-and-push:
     needs: test-and-build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && env.ACT != 'true'
+    if: ${{ github.ref == 'refs/heads/main' && env.ACT != 'true' }}
 
     steps:
       - name: Checkout
