@@ -49,11 +49,22 @@ jobs:
         continue-on-error: true
         run: |
           # Try to produce SARIF; tolerate failures to avoid blocking the pipeline.
-          docker run --rm -v "${{ github.workspace }}:/project" aquasecurity/trivy:latest \
+          # Pin the trivy container to a known release that supports SARIF output.
+          docker run --rm -v "${{ github.workspace }}:/project" aquasecurity/trivy:0.33.1 \
             fs --format sarif --severity CRITICAL,HIGH --exit-code 0 --output /project/trivy-report-${{ github.run_id }}.sarif /project || true
 
+      - name: Check SARIF file
+        run: |
+          if [ -f "./trivy-report-${{ github.run_id }}.sarif" ]; then
+            echo "SARIF_FOUND=true" >> $GITHUB_ENV
+            echo "SARIF file generated:" && ls -l ./trivy-report-${{ github.run_id }}.sarif
+          else
+            echo "SARIF_FOUND=false" >> $GITHUB_ENV
+            echo "No SARIF file produced"
+          fi
+
       - name: Upload SARIF to GitHub Code Scanning
-        if: always()
+        if: env.SARIF_FOUND == 'true'
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
