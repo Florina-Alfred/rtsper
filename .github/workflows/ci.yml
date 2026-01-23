@@ -8,7 +8,9 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    # Only run push-triggered CI on the main branch to avoid duplicate runs
+    # when pushing to feature branches that have open pull requests.
+    branches: ["main"]
   pull_request:
     branches: ["**"]
 
