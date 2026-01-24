@@ -83,3 +83,11 @@ func (c *Cluster) SetDraining(node string, d bool) {
 		c.draining[node] = d
 	}
 }
+
+// IsDraining reports whether the named node is marked draining.
+func (c *Cluster) IsDraining(node string) bool {
+	if d, ok := c.draining[node]; ok {
+		return d
+	}
+	return false
+}

@@ -270,6 +270,27 @@ func (h *serverHandler) OnPacketRTP(ctx *gortsplib.ServerHandlerOnPacketRTPCtx) 
 func (h *serverHandler) OnSetup(ctx *gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
 	plog.Debug("setup %s", topicName)
+	// If cluster configured, and owner is remote, reject UDP transports and otherwise return service unavailable.
+	if h.serverRef != nil && h.serverRef.cluster != nil {
+		owner := h.serverRef.cluster.Owner(topicName)
+		if !h.serverRef.cluster.IsSelf(owner) {
+			// check requested transport; ctx.Transport.Protocol uses the headers.TransportProtocol constants
+			// compare against UDP and reject with Unsupported Transport to encourage TCP interleaved
+			// Note: for proxied connections, the listener forwards TCP directly to the owner so this
+			// path is hit only when proxying is disabled or client connected directly to non-owner.
+			// return helpful message in body
+			// If client requested UDP transport, return Unsupported Transport with guidance
+			if ctx.Transport == gortsplib.TransportUDP || ctx.Transport == gortsplib.TransportUDPMulticast {
+				msg := []byte("UDP transport not supported across cluster; use RTP-over-TCP (interleaved)")
+				plog.Info("rejecting UDP SETUP for topic %s because owner %s is remote", topicName, owner)
+				return &base.Response{StatusCode: base.StatusUnsupportedTransport, Body: msg}, nil, nil
+			}
+			// otherwise generic service unavailable
+			msg := []byte("topic owned by another node; connect to the owner or use the cluster entrypoint")
+			return &base.Response{StatusCode: base.StatusServiceUnavailable, Body: msg}, nil, nil
+		}
+	}
+
 	st := h.mgr.GetTopicStream(topicName)
 	if st != nil {
 		return &base.Response{StatusCode: base.StatusOK}, st, nil
