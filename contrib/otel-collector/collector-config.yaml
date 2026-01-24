@@ -1,7 +1,12 @@
 receivers:
   otlp:
+    # Bind OTLP receiver to all interfaces so other containers in the
+    # Docker Compose network can reach the collector via the service name
+    # (e.g. otel-collector:4317). Configure the listener under the grpc
+    # protocol block which is the supported key in the collector config.
     protocols:
-      grpc: {}
+      grpc:
+        endpoint: "0.0.0.0:4317"
   prometheus:
     config:
       scrape_configs:

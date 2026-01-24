@@ -2,6 +2,8 @@ package metrics
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -10,6 +12,8 @@ import (
 	otlpmetricgrpc "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+
+	plog "redalf.de/rtsper/pkg/log"
 )
 
 var (
@@ -142,54 +146,110 @@ func InitOTLP(ctx context.Context, endpoint string) error {
 	if endpoint == "" {
 		return nil
 	}
-	exporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithEndpoint(endpoint), otlpmetricgrpc.WithInsecure())
-	if err != nil {
-		return err
-	}
-	reader := sdkmetric.NewPeriodicReader(exporter, sdkmetric.WithInterval(2*time.Second))
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	otel.SetMeterProvider(provider)
-	meter = provider.Meter("rtsper")
 
-	// create instruments
-	var e error
-	activePublishers, e = meter.Int64UpDownCounter("rtsper_active_publishers")
-	if e != nil {
-		return e
-	}
-	totalPublishers, e = meter.Int64Counter("rtsper_publishers_registered_total")
-	if e != nil {
-		return e
-	}
-	activeSubscribers, e = meter.Int64UpDownCounter("rtsper_active_subscribers")
-	if e != nil {
-		return e
-	}
-	totalSubscribers, e = meter.Int64Counter("rtsper_subscribers_registered_total")
-	if e != nil {
-		return e
-	}
-	packetsReceived, e = meter.Int64Counter("rtsper_packets_received_total")
-	if e != nil {
-		return e
-	}
-	packetsDispatched, e = meter.Int64Counter("rtsper_packets_dispatched_total")
-	if e != nil {
-		return e
-	}
-	packetsDropped, e = meter.Int64Counter("rtsper_packets_dropped_total")
-	if e != nil {
-		return e
-	}
-	allocatorReservations, e = meter.Int64Counter("rtsper_allocator_reservations_total")
-	if e != nil {
-		return e
-	}
-	allocatorReservedPairs, e = meter.Int64UpDownCounter("rtsper_allocator_reserved_pairs")
-	if e != nil {
-		return e
+	// tryInit attempts to set up the exporter and meter provider.
+	tryInit := func() error {
+		// Resolve the OTLP hostname first to avoid creating the exporter when
+		// DNS is failing (this avoids repeated exporter/dial errors that show
+		// as "dns: A record lookup error" in logs). Use a short timeout for
+		// DNS resolution.
+		host, _, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			// If endpoint doesn't include a port, treat the whole string as host
+			host = endpoint
+		}
+		rctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		addrs, err := net.DefaultResolver.LookupHost(rctx, host)
+		if err != nil {
+			return fmt.Errorf("dns lookup failed for %s: %w", host, err)
+		}
+		plog.Debug("otel: resolved %s -> %v", host, addrs)
+
+		exporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithEndpoint(endpoint), otlpmetricgrpc.WithInsecure())
+		if err != nil {
+			return err
+		}
+
+		// Use a slightly longer export interval to reduce noisy retry logs
+		// when the collector is temporarily unavailable.
+		reader := sdkmetric.NewPeriodicReader(exporter, sdkmetric.WithInterval(10*time.Second))
+		provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		otel.SetMeterProvider(provider)
+		meter = provider.Meter("rtsper")
+
+		// create instruments
+		var e error
+		activePublishers, e = meter.Int64UpDownCounter("rtsper_active_publishers")
+		if e != nil {
+			return e
+		}
+		totalPublishers, e = meter.Int64Counter("rtsper_publishers_registered_total")
+		if e != nil {
+			return e
+		}
+		activeSubscribers, e = meter.Int64UpDownCounter("rtsper_active_subscribers")
+		if e != nil {
+			return e
+		}
+		totalSubscribers, e = meter.Int64Counter("rtsper_subscribers_registered_total")
+		if e != nil {
+			return e
+		}
+		packetsReceived, e = meter.Int64Counter("rtsper_packets_received_total")
+		if e != nil {
+			return e
+		}
+		packetsDispatched, e = meter.Int64Counter("rtsper_packets_dispatched_total")
+		if e != nil {
+			return e
+		}
+		packetsDropped, e = meter.Int64Counter("rtsper_packets_dropped_total")
+		if e != nil {
+			return e
+		}
+		allocatorReservations, e = meter.Int64Counter("rtsper_allocator_reservations_total")
+		if e != nil {
+			return e
+		}
+		allocatorReservedPairs, e = meter.Int64UpDownCounter("rtsper_allocator_reserved_pairs")
+		if e != nil {
+			return e
+		}
+
+		return nil
 	}
 
+	// Try once synchronously. If it fails, log a warning and retry
+	// in the background so the service can start up even if the collector
+	// is not yet reachable.
+	if err := tryInit(); err == nil {
+		plog.Info("otel: metrics exporter initialized")
+		return nil
+	} else {
+		plog.Warn("otel: initial metrics exporter init failed: %v; starting background retry", err)
+	}
+
+	go func() {
+		backoff := 5 * time.Second
+		for {
+			select {
+			case <-ctx.Done():
+				plog.Info("otel: stopping init retries due to context cancellation")
+				return
+			case <-time.After(backoff):
+			}
+			if err := tryInit(); err == nil {
+				plog.Info("otel: metrics exporter initialized (background)")
+				return
+			} else {
+				plog.Warn("otel: metrics exporter init retry failed: %v; retrying in %s", err, backoff)
+			}
+			if backoff < 60*time.Second {
+				backoff *= 2
+			}
+		}
+	}()
 	return nil
 }
 

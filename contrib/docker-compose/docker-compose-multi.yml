@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   rtsper1:
-    image: ghcr.io/florina-alfred/rtsper:latest
+    build:
+      context: ../..
+      dockerfile: contrib/docker-compose/Dockerfile
+    image: rtsper:local
     container_name: rtsper1
     ports:
       - "9191:9191" # publisher port (rtsper1)
@@ -13,12 +16,18 @@ services:
       - NODE_NAME=rtsper1
       - LOG_LEVEL=warn
       - ENABLE_PROXY=true
-      - OTEL_ENDPOINT=otel-collector:4317
+      # OTEL_ENDPOINT intentionally omitted here to avoid noisy exporter
+      # errors in environments where the collector DNS/resolution may be
+      # unreliable. If you want OTLP metrics, set OTEL_ENDPOINT to a
+      # reachable address (e.g. otel-collector:4317).
     networks:
       - rtsnet
 
   rtsper2:
-    image: ghcr.io/florina-alfred/rtsper:latest
+    build:
+      context: ../..
+      dockerfile: contrib/docker-compose/Dockerfile
+    image: rtsper:local
     container_name: rtsper2
     ports:
       - "9193:9191" # publisher port (rtsper2) mapped to host 9193
@@ -29,12 +38,15 @@ services:
       - NODE_NAME=rtsper2
       - LOG_LEVEL=warn
       - ENABLE_PROXY=true
-      - OTEL_ENDPOINT=otel-collector:4317
+      # OTEL_ENDPOINT omitted; see comment for rtsper1
     networks:
       - rtsnet
 
   rtsper3:
-    image: ghcr.io/florina-alfred/rtsper:latest
+    build:
+      context: ../..
+      dockerfile: contrib/docker-compose/Dockerfile
+    image: rtsper:local
     container_name: rtsper3
     ports:
       - "9195:9191" # publisher port (rtsper3) mapped to host 9195
@@ -45,7 +57,7 @@ services:
       - NODE_NAME=rtsper3
       - LOG_LEVEL=warn
       - ENABLE_PROXY=true
-      - OTEL_ENDPOINT=otel-collector:4317
+      # OTEL_ENDPOINT omitted; see comment for rtsper1
     networks:
       - rtsnet
 

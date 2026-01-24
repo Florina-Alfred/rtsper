@@ -26,12 +26,10 @@ scrape_configs:
       - targets: ['rtsper1:8080', 'rtsper2:8080', 'rtsper3:8080']
     metrics_path: /metrics
 
-  - job_name: 'node'
-    # Optional node exporter (example). If node exporter runs on the host, use
-    # host.docker.internal:9100 so Prometheus container can reach it. Remove
-    # this job if you do not use a node exporter.
-    static_configs:
-      - targets: ['host.docker.internal:9100']
+  # node exporter job removed by default because host.docker.internal is not
+  # always available inside Linux Docker engines. If you run a node exporter
+  # in your Compose network, add its service name (e.g. 'node-exporter:9100')
+  # as a target here or re-enable the job locally.
 
 # Example of relabeling to add an environment label or normalize instance
 # Uncomment and adapt if you need to rewrite labels per job
