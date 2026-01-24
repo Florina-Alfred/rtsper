@@ -52,8 +52,9 @@ func main() {
 		// logging options
 		logFile  = flag.String("log-file", "", "Path to log file (optional). If set, log rotation is enabled")
 		logLevel = flag.String("log-level", "info", "Log level: debug,info,warn,error")
-		// OTLP/OTEL endpoint
-		otelEndpoint = flag.String("otel-endpoint", "localhost:4317", "OTLP/gRPC collector endpoint (host:port). Empty to disable OTLP init.")
+		// OTLP/OTEL endpoint. Default is empty so containers can set OTEL_ENDPOINT
+		// via environment variables (docker-compose). If empty OTLP init is skipped.
+		otelEndpoint = flag.String("otel-endpoint", "", "OTLP/gRPC collector endpoint (host:port). Empty to disable OTLP init.")
 		// allow explicit disabling of OTEL even when endpoint default is set
 		disableOtel = flag.Bool("disable-otel", false, "Disable pushing metrics to OTLP collector (overrides --otel-endpoint)")
 		// UDP options
