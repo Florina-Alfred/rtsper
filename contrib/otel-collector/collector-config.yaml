@@ -11,7 +11,8 @@ receivers:
 
 exporters:
   prometheus:
-    endpoint: "0.0.0.0:8888"
+    # Use a non-default port to avoid bind conflicts on hosts where 8888 is taken.
+    endpoint: "0.0.0.0:8889"
 
 service:
   pipelines:
