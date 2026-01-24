@@ -40,7 +40,8 @@ func TestServerStartWithAllocator(t *testing.T) {
 	}
 	m := topic.NewManager(cfg)
 
-	s := NewServer(m, cfg.PublishPort, cfg.SubscribePort, alloc)
+	// use defaults for cluster/proxy in tests - no cluster
+	s := NewServer(m, cfg.PublishPort, cfg.SubscribePort, alloc, nil, false, 0, 0)
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("server failed to start: %v", err)
 	}

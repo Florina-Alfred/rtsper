@@ -8,12 +8,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	plog "redalf.de/rtsper/pkg/log"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/base"
 
+	"redalf.de/rtsper/pkg/cluster"
 	"redalf.de/rtsper/pkg/metrics"
 	"redalf.de/rtsper/pkg/topic"
 	"redalf.de/rtsper/pkg/udpalloc"
@@ -29,10 +31,15 @@ type Server struct {
 	subSrv    *gortsplib.Server
 	mu        sync.Mutex
 	h         *serverHandler
+	// cluster m
+	cluster          *cluster.Cluster
+	enableProxy      bool
+	proxyDialTimeout time.Duration
+	proxyIOTimeout   time.Duration
 }
 
-func NewServer(mgr *topic.Manager, pubPort, subPort int, alloc *udpalloc.Allocator) *Server {
-	return &Server{mgr: mgr, pubPort: pubPort, subPort: subPort, allocator: alloc}
+func NewServer(mgr *topic.Manager, pubPort, subPort int, alloc *udpalloc.Allocator, cl *cluster.Cluster, enableProxy bool, dialTO, ioTO time.Duration) *Server {
+	return &Server{mgr: mgr, pubPort: pubPort, subPort: subPort, allocator: alloc, cluster: cl, enableProxy: enableProxy, proxyDialTimeout: dialTO, proxyIOTimeout: ioTO}
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -42,12 +49,22 @@ func (s *Server) Start(ctx context.Context) error {
 		sessIsPub:     make(map[*gortsplib.ServerSession]bool),
 		topicNameRe:   regexp.MustCompile(`^[A-Za-z0-9_-]+$`),
 		subscriberQSz: 256,
+		serverRef:     s,
 	}
 	s.h = h
 
 	// configure UDP addresses if enabled
 	mgrCfg := s.mgr.Config()
 	pubSrv := &gortsplib.Server{Handler: h, RTSPAddress: fmt.Sprintf(":%d", s.pubPort)}
+	if s.cluster != nil && s.enableProxy {
+		pubSrv.Listen = func(network string, address string) (net.Listener, error) {
+			ln, err := net.Listen(network, address)
+			if err != nil {
+				return nil, err
+			}
+			return &proxyListener{ln: ln, server: s, isPublisher: true}, nil
+		}
+	}
 	if mgrCfg.EnableUDP && mgrCfg.PublisherUDPBase > 0 {
 		pubSrv.UDPRTPAddress = fmt.Sprintf(":%d", mgrCfg.PublisherUDPBase)
 		pubSrv.UDPRTCPAddress = fmt.Sprintf(":%d", mgrCfg.PublisherUDPBase+1)
@@ -78,6 +95,15 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	subSrv := &gortsplib.Server{Handler: h, RTSPAddress: fmt.Sprintf(":%d", s.subPort)}
+	if s.cluster != nil && s.enableProxy {
+		subSrv.Listen = func(network string, address string) (net.Listener, error) {
+			ln, err := net.Listen(network, address)
+			if err != nil {
+				return nil, err
+			}
+			return &proxyListener{ln: ln, server: s, isPublisher: false}, nil
+		}
+	}
 	if mgrCfg.EnableUDP && mgrCfg.SubscriberUDPBase > 0 {
 		subSrv.UDPRTPAddress = fmt.Sprintf(":%d", mgrCfg.SubscriberUDPBase)
 		subSrv.UDPRTCPAddress = fmt.Sprintf(":%d", mgrCfg.SubscriberUDPBase+1)
@@ -142,6 +168,8 @@ type serverHandler struct {
 	sessIsPub     map[*gortsplib.ServerSession]bool
 	topicNameRe   *regexp.Regexp
 	subscriberQSz int
+	// cluster-related helpers
+	serverRef *Server
 }
 
 func (h *serverHandler) OnConnOpen(ctx *gortsplib.ServerHandlerOnConnOpenCtx) {
@@ -155,6 +183,8 @@ func (h *serverHandler) OnConnClose(ctx *gortsplib.ServerHandlerOnConnCloseCtx) 
 func (h *serverHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
 	plog.Debug("describe %s", topicName)
+	// if cluster configured, ensure owner is local or let proxy handle it
+	// describe handled normally; proxying happens at connection accept layer
 	st := h.mgr.GetTopicStream(topicName)
 	if st != nil {
 		return &base.Response{StatusCode: base.StatusOK}, st, nil
@@ -165,6 +195,15 @@ func (h *serverHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*
 func (h *serverHandler) OnAnnounce(ctx *gortsplib.ServerHandlerOnAnnounceCtx) (*base.Response, error) {
 	topicName := strings.TrimPrefix(ctx.Path, "/")
 	plog.Debug("announce %s", topicName)
+	// ensure owner is local when announcing (publisher). If cluster configured and owner != self,
+	// return ServiceUnavailable so client can retry to correct node. Proxying is handled at TCP accept.
+	if h.serverRef != nil && h.serverRef.cluster != nil {
+		owner := h.serverRef.cluster.Owner(topicName)
+		if !h.serverRef.cluster.IsSelf(owner) {
+			plog.Info("announce for topic %s routed to owner %s (not local)", topicName, owner)
+			return &base.Response{StatusCode: base.StatusServiceUnavailable}, nil
+		}
+	}
 	if !h.topicNameRe.MatchString(topicName) {
 		plog.Debug("invalid topic name: %s", topicName)
 		return &base.Response{StatusCode: base.StatusBadRequest}, nil

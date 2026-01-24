@@ -36,6 +36,10 @@ var (
 	promPacketsDropped         prometheus.Counter
 	promAllocatorReservations  prometheus.Counter
 	promAllocatorReservedPairs prometheus.Gauge
+	// forwarding metrics
+	promForwardedConnections prometheus.Counter
+	promForwardedBytes       prometheus.Counter
+	promForwardFailed        prometheus.Counter
 )
 
 func init() {
@@ -77,6 +81,22 @@ func init() {
 		Help: "Current number of reserved allocator pairs",
 	})
 
+	// forwarding metrics
+	promForwardedConnections = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "rtsper_forwarded_connections_total",
+		Help: "Total number of connections forwarded to other cluster nodes",
+	})
+
+	promForwardedBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "rtsper_forwarded_bytes_total",
+		Help: "Total bytes forwarded to other cluster nodes",
+	})
+
+	promForwardFailed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "rtsper_forward_failed_total",
+		Help: "Total failed attempts to forward connections to other nodes",
+	})
+
 	// Register metrics
 	prometheus.MustRegister(
 		promActivePublishers,
@@ -88,7 +108,29 @@ func init() {
 		promPacketsDropped,
 		promAllocatorReservations,
 		promAllocatorReservedPairs,
+		promForwardedConnections,
+		promForwardedBytes,
+		promForwardFailed,
 	)
+}
+
+// Forwarding metrics helpers
+func IncForwardedConnections() {
+	if promForwardedConnections != nil {
+		promForwardedConnections.Inc()
+	}
+}
+
+func AddForwardedBytes(n int64) {
+	if promForwardedBytes != nil {
+		promForwardedBytes.Add(float64(n))
+	}
+}
+
+func IncForwardFailed() {
+	if promForwardFailed != nil {
+		promForwardFailed.Inc()
+	}
 }
 
 // InitOTLP initializes an OTLP exporter to the provided endpoint (host:port) and
