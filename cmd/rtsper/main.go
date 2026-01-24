@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"redalf.de/rtsper/pkg/admin"
+	"redalf.de/rtsper/pkg/cluster"
 	plog "redalf.de/rtsper/pkg/log"
 	"redalf.de/rtsper/pkg/metrics"
 	"redalf.de/rtsper/pkg/rtspsrv"
@@ -62,8 +63,32 @@ func main() {
 		udpPortStart      = flag.Int("udp-port-start", 0, "Start of UDP port range for allocator (inclusive)")
 		udpPortEnd        = flag.Int("udp-port-end", 0, "End of UDP port range for allocator (inclusive)")
 		configPath        = flag.String("config", "", "Path to JSON config file (optional)")
+		// cluster/static membership for rendezvous hashing (comma-separated node names)
+		clusterNodes = flag.String("cluster-nodes", "", "Comma-separated list of cluster node names (e.g., rtsper1,rtsper2)")
+		nodeName     = flag.String("node-name", "", "Node name for this instance (defaults to hostname)")
+		enableProxy  = flag.Bool("enable-proxy", true, "Enable forwarding RTSP connections to owner nodes")
+		proxyDialTO  = flag.Duration("proxy-dial-timeout", 3*time.Second, "Dial timeout when proxying to owner")
+		proxyIOTo    = flag.Duration("proxy-io-timeout", 30*time.Second, "Idle read/write timeout for proxied connections")
 	)
 	flag.Parse()
+
+	// init cluster if provided
+	var cl *cluster.Cluster
+	if *clusterNodes != "" {
+		if *nodeName == "" {
+			hn, err := os.Hostname()
+			if err == nil {
+				*nodeName = hn
+			}
+		}
+		c, err := cluster.NewFromCSV(*clusterNodes, *nodeName)
+		if err != nil {
+			plog.Error("failed to initialize cluster: %v", err)
+			os.Exit(1)
+		}
+		cl = c
+		plog.Info("cluster: members=%v self=%s", cl.Members(), cl.Self())
+	}
 
 	// configure logging early
 	if *logFile != "" {
@@ -189,6 +214,11 @@ func main() {
 		}
 	}
 
+	// enableProxy, proxyDialTO, proxyIOTo currently configured via flags
+	_ = enableProxy
+	_ = proxyDialTO
+	_ = proxyIOTo
+
 	// create manager with final config
 	m := topic.NewManager(cfg)
 
@@ -209,7 +239,7 @@ func main() {
 	}()
 
 	// start RTSP servers
-	rtspSrv := rtspsrv.NewServer(m, cfg.PublishPort, cfg.SubscribePort, alloc)
+	rtspSrv := rtspsrv.NewServer(m, cfg.PublishPort, cfg.SubscribePort, alloc, cl, *enableProxy, *proxyDialTO, *proxyIOTo)
 	if err := rtspSrv.Start(ctx); err != nil {
 		plog.Error("failed to start rtsp servers: %v", err)
 		if allocatorRelease != nil {
