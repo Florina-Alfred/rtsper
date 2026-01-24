@@ -12,22 +12,26 @@ rule_files:
 
 scrape_configs:
   - job_name: 'rtsper'
-    # Static single instance (default admin port 8080)
+    # Scrape all rtsper instances by service name (works when Prometheus runs
+    # inside the same Docker Compose network). If you run Prometheus on the
+    # host, replace these with host-mapped ports (e.g. localhost:8080).
     static_configs:
-      - targets: ['localhost:8080']
+      - targets: ['rtsper1:8080', 'rtsper2:8080', 'rtsper3:8080']
     metrics_path: /metrics
     scheme: http
 
   - job_name: 'rtsper-cluster'
-    # Example: multiple rtsper instances in a cluster
+    # Multiple rtsper instances in a cluster (service names for Docker Compose)
     static_configs:
-      - targets: ['rtsper1.example:8080', 'rtsper2.example:8080']
+      - targets: ['rtsper1:8080', 'rtsper2:8080', 'rtsper3:8080']
     metrics_path: /metrics
 
   - job_name: 'node'
-    # Optional node exporter (example). Remove if unused.
+    # Optional node exporter (example). If node exporter runs on the host, use
+    # host.docker.internal:9100 so Prometheus container can reach it. Remove
+    # this job if you do not use a node exporter.
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['host.docker.internal:9100']
 
 # Example of relabeling to add an environment label or normalize instance
 # Uncomment and adapt if you need to rewrite labels per job
