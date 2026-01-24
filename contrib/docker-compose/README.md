@@ -69,6 +69,12 @@ Step-by-step: Multi-server quick test
    curl http://localhost:8082/cluster
    ```
 
+Optional: view metrics in Grafana
+
+```sh
+# Grafana UI: http://localhost:3000/  (default admin/admin)
+```
+
 3) Stream a webcam to a topic (topic name: `webcam1`)
 
    - If you have a Linux webcam device `/dev/video0`:
