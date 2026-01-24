@@ -225,6 +225,10 @@ func main() {
 	// start admin server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", admin.StatusHandler(m))
+	// cluster admin (optional)
+	if cl != nil {
+		mux.HandleFunc("/cluster", admin.ClusterHandler(cl))
+	}
 	mux.Handle("/metrics", promhttp.Handler())
 	adminSrv := &http.Server{Addr: fmt.Sprintf(":%d", *adminPort), Handler: mux}
 

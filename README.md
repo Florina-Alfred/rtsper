@@ -109,6 +109,19 @@ docker build -t rtsper:local .
 docker run --rm -p 9191:9191 -p 9192:9192 -p 8080:8080 rtsper:local --publish-port=9191 --subscribe-port=9192
 ```
 
+Clustered mode (Docker Compose)
+
+- The repository includes a `contrib/docker-compose` demo that starts two rtsper instances with static cluster membership configured via `CLUSTER_NODES` and `NODE_NAME` environment variables.
+- Each instance decides ownership of topics using rendezvous hashing. The demo maps the second instance's ports to alternate host ports so both can run locally without collision.
+- Only RTSP-over-TCP (RTP-over-TCP) is supported for cross-node routing; UDP transports are intentionally unsupported across nodes in this release.
+
+Example (run compose demo):
+
+    cd contrib/docker-compose
+    docker compose up --build
+
+In the demo, the services are `rtsper1` and `rtsper2`. Use `docker compose exec` to run ffmpeg/ffplay within the `rtsnet` network if you want to connect using service names (recommended for routing tests).
+
 Notes:
 
 - The container maps the RTSP publisher (ingest) port 9191, the subscriber (play) port 9192, and the admin/metrics port 8080 to the host. When running on the same machine you can use `localhost` to reach these ports.
