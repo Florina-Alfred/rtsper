@@ -197,6 +197,11 @@ jobs:
     # checking the actor (act typically uses 'nektos/act'). Using `env` in a
     # workflow-level `if` is not supported, so check `github.actor` instead.
     if: ${{ github.ref == 'refs/heads/main' && github.actor != 'nektos/act' }}
+    strategy:
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
 
     steps:
       - name: Checkout
@@ -212,6 +217,12 @@ jobs:
         run: |
           echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
+      - name: Prepare platform tag
+        run: |
+          # Convert platform string to a docker tag-safe format (e.g., linux/amd64 -> linux-amd64)
+          PLATFORM_TAG=$(echo "${{ matrix.platform }}" | sed 's/\//-/g')
+          echo "PLATFORM_TAG=$PLATFORM_TAG" >> $GITHUB_ENV
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
@@ -225,19 +236,59 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image for ${{ matrix.platform }}
         uses: docker/build-push-action@v5
         with:
           context: .
           file: contrib/docker-compose/Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-${{ env.PLATFORM_TAG }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.repository }}
+
+  create-manifest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' && github.actor != 'nektos/act' }}
+
+    steps:
+      - name: Compute image owner (lowercase)
+        run: |
+          OWNER=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_OWNER=$OWNER_LOWER" >> $GITHUB_ENV
+
+      - name: Compute short SHA
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-platform manifest
+        run: |
+          # Create manifest for commit SHA tag
+          docker manifest create \
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }} \
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-amd64 \
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-arm64
+
+          docker manifest push ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}
+
+          # Create manifest for latest tag
+          docker manifest create \
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest \
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-amd64 \
+            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-arm64
+
+          docker manifest push ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest
 
       # NOTE: Image build & push moved to the security workflow so that Trivy
       # image scanning runs first and only allows pushes when it succeeds.
