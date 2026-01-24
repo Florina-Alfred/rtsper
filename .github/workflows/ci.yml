@@ -274,21 +274,17 @@ jobs:
 
       - name: Create and push multi-platform manifest
         run: |
-          # Create manifest for commit SHA tag
-          docker manifest create \
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }} \
+          # Use buildx imagetools to create multi-arch manifests from the
+          # platform-specific images. `docker manifest` fails when the
+          # referenced images are already manifest lists; imagetools handles
+          # both image types and is preferred on modern runners.
+          docker buildx imagetools create -t ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }} \
             ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-amd64 \
             ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-arm64
 
-          docker manifest push ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}
-
-          # Create manifest for latest tag
-          docker manifest create \
-            ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest \
+          docker buildx imagetools create -t ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest \
             ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-amd64 \
             ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:${{ env.SHORT_SHA }}-linux-arm64
-
-          docker manifest push ghcr.io/${{ env.IMAGE_OWNER }}/rtsper:latest
 
       # NOTE: Image build & push moved to the security workflow so that Trivy
       # image scanning runs first and only allows pushes when it succeeds.
