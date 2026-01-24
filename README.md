@@ -86,11 +86,10 @@ Notes:
   ffplay -rtsp_transport udp rtsp://localhost:9192/topic1
   ```
 
+
 ### Containerized (docker run)
 
-You can run the published image or a locally-built image with `docker run`. The image includes an entrypoint so flags can be passed directly to the server.
-
-Usage (pull the latest published image):
+1) Run the published image (minimum required):
 
 ```sh
 docker run --rm \
@@ -101,13 +100,20 @@ docker run --rm \
   --publish-port=9191 --subscribe-port=9192
 ```
 
-Or, build locally from `contrib/docker-compose/` and run the local image:
+2) Publish a webcam to a topic (TCP interleaved):
 
 ```sh
-cd contrib/docker-compose
-docker build -t rtsper:local .
-docker run --rm -p 9191:9191 -p 9192:9192 -p 8080:8080 rtsper:local --publish-port=9191 --subscribe-port=9192
+ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
+  -f rtsp -rtsp_transport tcp rtsp://<host>:9191/topic1
 ```
+
+3) Play the relayed stream from the subscriber port:
+
+```sh
+ffplay -rtsp_transport tcp rtsp://<host>:9192/topic1
+```
+
+Replace `<host>` with the host running the container (use `localhost` when running locally).
 
 Clustered mode (Docker Compose)
 
@@ -146,31 +152,44 @@ If you prefer the demo compose stack (includes Prometheus/Grafana and a small HL
 Quick multi-server compose example
 ---------------------------------
 
-Start a 3-node compose demo (pulls `ghcr.io/florina-alfred/rtsper:latest`):
+1) Start the 3-node compose demo (pulls `ghcr.io/florina-alfred/rtsper:latest`):
 
 ```sh
 cd contrib/docker-compose
 docker compose -f docker-compose-multi.yml up
 ```
 
-Publish webcam to `topic1` (rtsper1 publish port):
+2) Verify cluster and status (optional):
+
+```sh
+curl http://localhost:8080/cluster
+curl http://localhost:8080/status
+```
+
+3) Stream a webcam to `topic1` (publish to rtsper1):
 
 ```sh
 ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
   -f rtsp -rtsp_transport tcp rtsp://<host>:9191/topic1
 ```
 
-Publish a video file to `topic2` (rtsper2 publish port):
+4) Stream a video file to `topic2` (publish to rtsper2):
 
 ```sh
 ffmpeg -re -i /path/to/video.mp4 -f rtsp -rtsp_transport tcp rtsp://<host>:9193/topic2
 ```
 
-Play either topic from any server (example uses rtsper3 subscribe mapping):
+5) Play either topic from any server (example uses rtsper3 subscribe mapping):
 
 ```sh
 ffplay -rtsp_transport tcp rtsp://<host>:9196/topic1
 ffplay -rtsp_transport tcp rtsp://<host>:9196/topic2
+```
+
+6) Stop the demo:
+
+```sh
+docker compose -f docker-compose-multi.yml down
 ```
 
 Replace `<host>` with the host running the compose stack (or use `localhost` if running locally).
