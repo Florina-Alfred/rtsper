@@ -1,16 +1,37 @@
 version: '3.8'
 
 services:
-  rtsper:
+  rtsper1:
     build:
       context: ../../
       dockerfile: contrib/docker-compose/Dockerfile
     image: rtsper:local
+    container_name: rtsper1
     ports:
-      - "9191:9191" # publisher port
-      - "9192:9192" # subscriber port
-      - "8080:8080" # admin /metrics
-    command: ["-log-level=warn"]
+      - "9191:9191" # publisher port (rtsper1)
+      - "9192:9192" # subscriber port (rtsper1)
+      - "8080:8080" # admin /metrics (rtsper1)
+    environment:
+      - CLUSTER_NODES=rtsper1,rtsper2
+      - NODE_NAME=rtsper1
+    command: ["--log-level=warn"]
+    networks:
+      - rtsnet
+
+  rtsper2:
+    build:
+      context: ../../
+      dockerfile: contrib/docker-compose/Dockerfile
+    image: rtsper:local
+    container_name: rtsper2
+    ports:
+      - "9193:9191" # publisher port (rtsper2) mapped to host 9193
+      - "9194:9192" # subscriber port (rtsper2) mapped to host 9194
+      - "8081:8080" # admin /metrics (rtsper2) mapped to host 8081
+    environment:
+      - CLUSTER_NODES=rtsper1,rtsper2
+      - NODE_NAME=rtsper2
+    command: ["--log-level=warn"]
     networks:
       - rtsnet
 
