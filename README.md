@@ -143,6 +143,38 @@ ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1
 
 If you prefer the demo compose stack (includes Prometheus/Grafana and a small HLS proxy) use the compose files in `contrib/docker-compose/` as documented there.
 
+Quick multi-server compose example
+---------------------------------
+
+Start a 3-node compose demo (pulls `ghcr.io/florina-alfred/rtsper:latest`):
+
+```sh
+cd contrib/docker-compose
+docker compose -f docker-compose-multi.yml up
+```
+
+Publish webcam to `topic1` (rtsper1 publish port):
+
+```sh
+ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
+  -f rtsp -rtsp_transport tcp rtsp://<host>:9191/topic1
+```
+
+Publish a video file to `topic2` (rtsper2 publish port):
+
+```sh
+ffmpeg -re -i /path/to/video.mp4 -f rtsp -rtsp_transport tcp rtsp://<host>:9193/topic2
+```
+
+Play either topic from any server (example uses rtsper3 subscribe mapping):
+
+```sh
+ffplay -rtsp_transport tcp rtsp://<host>:9196/topic1
+ffplay -rtsp_transport tcp rtsp://<host>:9196/topic2
+```
+
+Replace `<host>` with the host running the compose stack (or use `localhost` if running locally).
+
 ## Configuration file
 
 - Pass a JSON config file using `-config /path/to/config.json`.
