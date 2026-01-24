@@ -72,6 +72,25 @@ func main() {
 	)
 	flag.Parse()
 
+	// fallback to environment variables for containerized setups where flags
+	// are not passed via command. This allows users to set CLUSTER_NODES and
+	// NODE_NAME via environment in docker-compose without changing the image.
+	if *clusterNodes == "" {
+		if v := os.Getenv("CLUSTER_NODES"); v != "" {
+			*clusterNodes = v
+		}
+	}
+	if *nodeName == "" {
+		if v := os.Getenv("NODE_NAME"); v != "" {
+			*nodeName = v
+		}
+	}
+	if *otelEndpoint == "" {
+		if v := os.Getenv("OTEL_ENDPOINT"); v != "" {
+			*otelEndpoint = v
+		}
+	}
+
 	// init cluster if provided
 	var cl *cluster.Cluster
 	if *clusterNodes != "" {
