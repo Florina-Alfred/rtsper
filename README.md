@@ -104,50 +104,20 @@ docker run --rm \
 
 ```sh
 ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
-  -f rtsp -rtsp_transport tcp rtsp://<host>:9191/topic1
+  -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1
 ```
 
 3) Play the relayed stream from the subscriber port:
 
 ```sh
-ffplay -rtsp_transport tcp rtsp://<host>:9192/topic1
-```
-
-Replace `<host>` with the host running the container (use `localhost` when running locally).
-
-Clustered mode (Docker Compose)
-
-- The repository includes a `contrib/docker-compose` demo that starts two rtsper instances with static cluster membership configured via `CLUSTER_NODES` and `NODE_NAME` environment variables.
-- Each instance decides ownership of topics using rendezvous hashing. The demo maps the second instance's ports to alternate host ports so both can run locally without collision.
-- Only RTSP-over-TCP (RTP-over-TCP) is supported for cross-node routing; UDP transports are intentionally unsupported across nodes in this release.
-
-Example (run compose demo):
-
-    cd contrib/docker-compose
-    docker compose up --build
-
-In the demo, the services are `rtsper1` and `rtsper2`. Use `docker compose exec` to run ffmpeg/ffplay within the `rtsnet` network if you want to connect using service names (recommended for routing tests).
-
-Notes:
-
-- The container maps the RTSP publisher (ingest) port 9191, the subscriber (play) port 9192, and the admin/metrics port 8080 to the host. When running on the same machine you can use `localhost` to reach these ports.
-- If you run the container on a remote host, replace `localhost` in the examples below with the host IP or hostname.
-
-Publish a webcam (v4l2) from the host to the server's publish port (host-side):
-
-```sh
-ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
-  -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
-  -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1
-```
-
-Play the relayed stream from the subscriber port:
-
-```sh
 ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1
 ```
 
-If you prefer the demo compose stack (includes Prometheus/Grafana and a small HLS proxy) use the compose files in `contrib/docker-compose/` as documented there.
+Use `localhost` when running locally.
+
+Clustered mode note
+
+If you use the compose demos, see `contrib/docker-compose/README.md` for details. The quick multi-server example above is the recommended starting point for local testing.
 
 Quick multi-server compose example
 ---------------------------------
@@ -170,20 +140,20 @@ curl http://localhost:8080/status
 
 ```sh
 ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
-  -f rtsp -rtsp_transport tcp rtsp://<host>:9191/topic1
+  -f rtsp -rtsp_transport tcp rtsp://localhost:9191/topic1
 ```
 
 4) Stream a video file to `topic2` (publish to rtsper2):
 
 ```sh
-ffmpeg -re -i /path/to/video.mp4 -f rtsp -rtsp_transport tcp rtsp://<host>:9193/topic2
+ffmpeg -re -i /path/to/video.mp4 -f rtsp -rtsp_transport tcp rtsp://localhost:9193/topic2
 ```
 
 5) Play either topic from any server (example uses rtsper3 subscribe mapping):
 
 ```sh
-ffplay -rtsp_transport tcp rtsp://<host>:9196/topic1
-ffplay -rtsp_transport tcp rtsp://<host>:9196/topic2
+ffplay -rtsp_transport tcp rtsp://localhost:9196/topic1
+ffplay -rtsp_transport tcp rtsp://localhost:9196/topic2
 ```
 
 6) Stop the demo:
@@ -192,7 +162,7 @@ ffplay -rtsp_transport tcp rtsp://<host>:9196/topic2
 docker compose -f docker-compose-multi.yml down
 ```
 
-Replace `<host>` with the host running the compose stack (or use `localhost` if running locally).
+Use `localhost` when running locally.
 
 ## Configuration file
 
