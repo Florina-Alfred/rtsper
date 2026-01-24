@@ -6,8 +6,11 @@ receivers:
     config:
       scrape_configs:
         - job_name: 'rtsper'
+          # Scrape rtsper admin metrics via service names when collector runs inside
+          # the same Docker Compose network. If you run the collector on the host,
+          # add host-mapped ports (e.g. host.docker.internal:8080).
           static_configs:
-            - targets: ['host.docker.internal:8083','172.17.0.1:8083','127.0.0.1:8083']
+            - targets: ['rtsper1:8080', 'rtsper2:8080', 'rtsper3:8080']
 
 exporters:
   prometheus:
