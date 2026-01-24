@@ -53,6 +53,8 @@ func main() {
 		logLevel = flag.String("log-level", "info", "Log level: debug,info,warn,error")
 		// OTLP/OTEL endpoint
 		otelEndpoint = flag.String("otel-endpoint", "localhost:4317", "OTLP/gRPC collector endpoint (host:port). Empty to disable OTLP init.")
+		// allow explicit disabling of OTEL even when endpoint default is set
+		disableOtel = flag.Bool("disable-otel", false, "Disable pushing metrics to OTLP collector (overrides --otel-endpoint)")
 		// UDP options
 		enableUDP         = flag.Bool("enable-udp", false, "Enable UDP RTP/RTCP listeners")
 		publisherUDPBase  = flag.Int("publisher-udp-base", 0, "Publisher UDP base port (RTP). RTCP = base+1")
@@ -174,8 +176,10 @@ func main() {
 		}
 	}
 
-	// initialize OTLP metrics if requested
-	if *otelEndpoint != "" {
+	// initialize OTLP metrics if requested and not explicitly disabled
+	if *disableOtel {
+		plog.Info("otel metrics disabled via --disable-otel")
+	} else if *otelEndpoint != "" {
 		if err := metrics.InitOTLP(context.Background(), *otelEndpoint); err != nil {
 			plog.Error("failed to initialize OTLP metrics: %v", err)
 			if allocatorRelease != nil {
