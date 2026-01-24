@@ -46,8 +46,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./rules.yml:/etc/prometheus/rules.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/rules.yml:/etc/prometheus/rules.yml:ro
     ports:
       - "9090:9090"
     networks:
@@ -57,7 +57,8 @@ services:
     image: grafana/grafana:9.3.2
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_INSTALL_PLUGINS=marcusolsson-picture-panel,grafana-image-renderer
+      # If you want plugins, set GF_INSTALL_PLUGINS to a compatible list.
+      # Leaving it unset avoids startup failures when a plugin is incompatible.
     ports:
       - "3000:3000"
     volumes:
