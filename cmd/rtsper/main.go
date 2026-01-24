@@ -228,6 +228,7 @@ func main() {
 	// cluster admin (optional)
 	if cl != nil {
 		mux.HandleFunc("/cluster", admin.ClusterHandler(cl))
+		mux.HandleFunc("/cluster/drain", admin.DrainHandler(cl))
 	}
 	mux.Handle("/metrics", promhttp.Handler())
 	adminSrv := &http.Server{Addr: fmt.Sprintf(":%d", *adminPort), Handler: mux}

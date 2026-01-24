@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  rtsper1:
+    image: ghcr.io/florina-alfred/rtsper:latest
+    container_name: rtsper1
+    ports:
+      - "9191:9191" # publisher port (rtsper1)
+      - "9192:9192" # subscriber port (rtsper1)
+      - "8080:8080" # admin /metrics (rtsper1)
+    environment:
+      - CLUSTER_NODES=rtsper1,rtsper2,rtsper3
+      - NODE_NAME=rtsper1
+    command: ["--log-level=warn"]
+    networks:
+      - rtsnet
+
+  rtsper2:
+    image: ghcr.io/florina-alfred/rtsper:latest
+    container_name: rtsper2
+    ports:
+      - "9193:9191" # publisher port (rtsper2) mapped to host 9193
+      - "9194:9192" # subscriber port (rtsper2) mapped to host 9194
+      - "8081:8080" # admin /metrics (rtsper2) mapped to host 8081
+    environment:
+      - CLUSTER_NODES=rtsper1,rtsper2,rtsper3
+      - NODE_NAME=rtsper2
+    command: ["--log-level=warn"]
+    networks:
+      - rtsnet
+
+  rtsper3:
+    image: ghcr.io/florina-alfred/rtsper:latest
+    container_name: rtsper3
+    ports:
+      - "9195:9191" # publisher port (rtsper3) mapped to host 9195
+      - "9196:9192" # subscriber port (rtsper3) mapped to host 9196
+      - "8082:8080" # admin /metrics (rtsper3) mapped to host 8082
+    environment:
+      - CLUSTER_NODES=rtsper1,rtsper2,rtsper3
+      - NODE_NAME=rtsper3
+    command: ["--log-level=warn"]
+    networks:
+      - rtsnet
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./rules.yml:/etc/prometheus/rules.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - rtsnet
+
+  grafana:
+    image: grafana/grafana:9.3.2
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=marcusolsson-picture-panel,grafana-image-renderer
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ../grafana/dashboard.json:/var/lib/grafana/dashboards/rtsper-dashboard.json:ro
+    networks:
+      - rtsnet
+
+  hls:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    volumes:
+      - ./hls:/usr/share/nginx/html/hls
+    ports:
+      - "8088:80"
+    networks:
+      - rtsnet
+
+networks:
+  rtsnet:
+    driver: bridge
+
+volumes:
+  grafana-storage:
