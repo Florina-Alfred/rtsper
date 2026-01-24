@@ -133,12 +133,14 @@ func IncForwardFailed() {
 	}
 }
 
-// InitOTLP initializes an OTLP exporter to the provided endpoint (host:port) and
-// configures a MeterProvider that exports periodically. If endpoint is empty
-// it defaults to "localhost:4317".
+// InitOTLP initializes an OTLP exporter to the provided endpoint (host:port)
+// and configures a MeterProvider that exports periodically. If endpoint is
+// empty, InitOTLP is a no-op and returns nil. This avoids attempting to
+// connect to localhost from containerized environments when the caller
+// neglected to set an endpoint.
 func InitOTLP(ctx context.Context, endpoint string) error {
 	if endpoint == "" {
-		endpoint = "localhost:4317"
+		return nil
 	}
 	exporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithEndpoint(endpoint), otlpmetricgrpc.WithInsecure())
 	if err != nil {
