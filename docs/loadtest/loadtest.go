@@ -40,10 +40,30 @@ func main() {
 		log.Fatalf("ffmpeg not found in PATH: %v", err)
 	}
 
-	// Ensure input file exists
-	if _, err := os.Stat(*filePath); err != nil {
-		log.Fatalf("input file not found: %s (%v)", *filePath, err)
+	// Resolve input file path: try a few common locations so the tool can be
+	// run from the repository root (go run ./docs/loadtest) or from
+	// the docs/loadtest directory (go run loadtest.go).
+	tried := []string{}
+	found := ""
+	candidates := []string{
+		*filePath,
+		filepath.Join("docs", filepath.Base(*filePath)),
+		filepath.Join("..", *filePath),
+		filepath.Join("..", "docs", filepath.Base(*filePath)),
+		filepath.Join(".", filepath.Base(*filePath)),
 	}
+	for _, c := range candidates {
+		tried = append(tried, c)
+		if _, err := os.Stat(c); err == nil {
+			found = c
+			break
+		}
+	}
+	if found == "" {
+		log.Fatalf("input file not found (%s); tried: %v", *filePath, tried)
+	}
+	*filePath = found
+	log.Printf("using input file: %s", *filePath)
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		log.Fatalf("cannot create out dir: %v", err)
