@@ -40,25 +40,46 @@ func main() {
 		log.Fatalf("ffmpeg not found in PATH: %v", err)
 	}
 
-	// Resolve input file path: try a few common locations so the tool can be
-	// run from the repository root (go run ./docs/loadtest) or from
-	// the docs/loadtest directory (go run loadtest.go).
+	// Resolve input file path by walking up from the current working
+	// directory and testing several candidate locations. This lets the
+	// program be run from the repo root or from docs/loadtest.
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("cannot get working dir: %v", err)
+	}
+
 	tried := []string{}
 	found := ""
-	candidates := []string{
-		*filePath,
-		filepath.Join("docs", filepath.Base(*filePath)),
-		filepath.Join("..", *filePath),
-		filepath.Join("..", "docs", filepath.Base(*filePath)),
-		filepath.Join(".", filepath.Base(*filePath)),
+
+	// Also consider absolute/relative as provided first
+	candidates := []string{*filePath}
+	if abs, err := filepath.Abs(*filePath); err == nil {
+		candidates = append(candidates, abs)
 	}
+
+	// Walk up a few directory levels and try both the provided path and the basename
+	cur := cwd
+	for i := 0; i < 6; i++ {
+		candidates = append(candidates, filepath.Join(cur, *filePath))
+		candidates = append(candidates, filepath.Join(cur, filepath.Base(*filePath)))
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+
 	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
 		tried = append(tried, c)
 		if _, err := os.Stat(c); err == nil {
 			found = c
 			break
 		}
 	}
+
 	if found == "" {
 		log.Fatalf("input file not found (%s); tried: %v", *filePath, tried)
 	}
