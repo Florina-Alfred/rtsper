@@ -12,33 +12,33 @@
       "title": "Active Publishers",
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "options": {},
-      "targets": [ { "expr": "rtsper_active_publishers", "format": "time_series" } ]
-    },
+        "targets": [ { "expr": "sum(rtsper_active_publishers{instance=~\"$rtsper\"})", "format": "time_series" } ]
+      },
     {
       "type": "stat",
       "title": "Active Subscribers",
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "options": {},
-      "targets": [ { "expr": "rtsper_active_subscribers", "format": "time_series" } ]
-    },
+        "targets": [ { "expr": "sum(rtsper_active_subscribers{instance=~\"$rtsper\"})", "format": "time_series" } ]
+      },
     {
       "type": "timeseries",
       "title": "Packets Received (1m rate)",
       "gridPos": { "x": 0, "y": 4, "w": 12, "h": 6 },
-      "targets": [ { "expr": "rate(rtsper_packets_received_total[1m])", "legendFormat": "received/s" } ]
-    },
+        "targets": [ { "expr": "sum(rate(rtsper_packets_received_total{instance=~\"$rtsper\"}[1m]))", "legendFormat": "received/s" } ]
+      },
     {
       "type": "timeseries",
       "title": "Packets Dispatched (1m rate)",
       "gridPos": { "x": 0, "y": 10, "w": 12, "h": 6 },
-      "targets": [ { "expr": "rate(rtsper_packets_dispatched_total[1m])", "legendFormat": "dispatched/s" } ]
-    },
+        "targets": [ { "expr": "sum(rate(rtsper_packets_dispatched_total{instance=~\"$rtsper\"}[1m]))", "legendFormat": "dispatched/s" } ]
+      },
     {
       "type": "timeseries",
       "title": "Packet Drop Rate (1m)",
       "gridPos": { "x": 0, "y": 16, "w": 12, "h": 6 },
-      "targets": [ { "expr": "rate(rtsper_packets_dropped_total[1m])", "legendFormat": "dropped/s" } ]
-    },
+        "targets": [ { "expr": "sum(rate(rtsper_packets_dropped_total{instance=~\"$rtsper\"}[1m]))", "legendFormat": "dropped/s" } ]
+      },
     {
       "type": "text",
       "title": "RTSP Streams & Video Panel",
@@ -48,7 +48,20 @@
       }
     }
   ],
-  "templating": { "list": [] },
+  "templating": { "list": [
+    {
+      "type": "query",
+      "name": "rtsper",
+      "label": "RTSP Server",
+      "datasource": "Prometheus",
+      "refresh": 2,
+      "query": "label_values(rtsper_active_publishers, instance)",
+      "multi": true,
+      "includeAll": true,
+      "allValue": ".*",
+      "hide": 0
+    }
+  ] },
   "annotations": { "list": [] },
   "time": { "from": "now-5m", "to": "now" },
   "timepicker": {},

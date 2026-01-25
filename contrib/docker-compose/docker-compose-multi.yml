@@ -63,6 +63,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    container_name: prometheus
     volumes:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../prometheus/rules.yml:/etc/prometheus/rules.yml:ro
@@ -84,6 +85,7 @@ services:
 
   grafana:
     image: grafana/grafana:9.3.2
+    container_name: grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       # If you want plugins, set GF_INSTALL_PLUGINS to a compatible list.
@@ -101,6 +103,7 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+    container_name: hls
     volumes:
       - ./hls:/usr/share/nginx/html/hls
     ports:
