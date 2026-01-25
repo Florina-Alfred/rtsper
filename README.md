@@ -170,6 +170,36 @@ ffplay -rtsp_transport tcp rtsp://localhost:9196/topic1
 ffplay -rtsp_transport tcp rtsp://localhost:9196/topic2
 ```
 
+<details>
+<summary>GStreamer equivalents for steps 3, 4 and 5 (click to expand)</summary>
+
+These examples show equivalent commands using GStreamer. Note: `rtspclientsink` is provided by gst-plugins-bad (may need to be installed) and `gst-play-1.0` is a convenience player. For more control use `gst-launch-1.0` pipeline forms shown below.
+
+- 3) Stream a webcam to `topic1` (publish to rtsper1):
+
+```sh
+gst-launch-1.0 v4l2src device=/dev/video0 ! videoconvert ! x264enc tune=zerolatency speed-preset=superfast bitrate=800 ! rtph264pay config-interval=1 ! rtspclientsink location=rtsp://localhost:9191/topic1
+```
+
+- 4) Stream a video file to `topic2` (publish to rtsper2):
+
+```sh
+gst-launch-1.0 filesrc location=/path/to/video.mp4 ! decodebin ! videoconvert ! x264enc tune=zerolatency bitrate=1000 ! rtph264pay config-interval=1 ! rtspclientsink location=rtsp://localhost:9193/topic2
+```
+
+- 5) Play either topic from any server (example uses rtsper3 subscribe mapping):
+
+```sh
+# Quick play using gst-play (simple):
+gst-play-1.0 rtsp://localhost:9196/topic1
+gst-play-1.0 rtsp://localhost:9196/topic2
+
+# Or with gst-launch for explicit TCP transport and decoding:
+gst-launch-1.0 rtspsrc location=rtsp://localhost:9196/topic1 protocols=tcp ! rtph264depay ! avdec_h264 ! videoconvert ! autovideosink
+```
+
+</details>
+
 6) Stop the demo:
 
 ```sh
