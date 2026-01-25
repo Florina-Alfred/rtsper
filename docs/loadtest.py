@@ -61,6 +61,13 @@ def build_ffplay_cmd(ffplay: str, rtsp_url: str) -> list:
     return [ffplay, "-rtsp_transport", "tcp", rtsp_url]
 
 
+def build_subscriber_cmd(ffmpeg: str, rtsp_url: str) -> list:
+    # Use ffmpeg as a lightweight subscriber that reads the RTSP stream and
+    # discards output. This is generally lighter than ffplay and scriptable.
+    # Use TCP transport for reliability.
+    return [ffmpeg, "-rtsp_transport", "tcp", "-i", rtsp_url, "-f", "null", "-"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Publish docs/test_footage.mp4 with ffmpeg")
     parser.add_argument("--host", default="127.0.0.1", help="RTSP server host to publish to")
@@ -77,6 +84,9 @@ def main() -> None:
     parser.add_argument("--topic-map", default=None, help="Explicit topic->subscriber mapping as JSON or comma list (eg 'topic1:3,topic2:2')")
     parser.add_argument("--spawn", action="store_true", help="Spawn one ffmpeg publisher per topic generated")
     parser.add_argument("--stagger-ms", type=int, default=200, help="Milliseconds to wait between spawning publishers when --spawn is used")
+    parser.add_argument("--streams", type=int, default=0, help="Number of publisher streams to spawn (creates that many topics)")
+    parser.add_argument("--receivers-per-topic", type=int, default=0, help="Number of receiver clients to spawn per topic")
+    parser.add_argument("--save-logs", action="store_true", help="Save per-process logs to loadtest-logs/ (default: discard logs)")
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -124,11 +134,26 @@ def main() -> None:
         # default single topic
         topic_map["topic1"] = 0
 
+    # if --streams provided, generate that many topics (overrides auto-topics)
+    if args.streams > 0:
+        topic_map = {f"{args.topic_prefix}{i}": args.receivers_per_topic for i in range(1, args.streams + 1)}
+
+    # ensure subscriber counts are set from --receivers-per-topic when not provided
+    for k in list(topic_map.keys()):
+        if not isinstance(topic_map[k], int) or topic_map[k] == 0:
+            topic_map[k] = int(args.receivers_per_topic)
+
     print("Topic map:", topic_map)
 
-    processes = []  # list of (topic, proc)
+    processes = []  # list of (role, topic, idx, proc)
     pub_proc = None
     play_proc = None
+
+    # prepare log handling
+    log_dir = None
+    if args.save_logs:
+        log_dir = os.path.join(script_dir, "loadtest-logs")
+        os.makedirs(log_dir, exist_ok=True)
     try:
         if args.spawn:
             # spawn a publisher per topic
@@ -137,8 +162,24 @@ def main() -> None:
                 ffmpeg_cmd = build_ffmpeg_cmd(ffmpeg, infile, pub_url, args.reencode, args.loop)
                 print(f"Starting publisher for {tname}:")
                 print(" ", " ".join(ffmpeg_cmd))
-                p = subprocess.Popen(ffmpeg_cmd)
-                processes.append((tname, p))
+                if log_dir:
+                    fn = os.path.join(log_dir, f"pub_{tname}.log")
+                    fout = open(fn, "wb")
+                    p = subprocess.Popen(ffmpeg_cmd, stdout=fout, stderr=subprocess.STDOUT)
+                else:
+                    p = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                processes.append(("pub", tname, 0, p))
+                # spawn subscribers for this topic
+                for si in range(0, int(subs)):
+                    sub_url = f"rtsp://{args.host}:{args.sub_port}/{tname}"
+                    sub_cmd = build_subscriber_cmd(ffmpeg, sub_url)
+                    if log_dir:
+                        sfn = os.path.join(log_dir, f"sub_{tname}_{si}.log")
+                        sfout = open(sfn, "wb")
+                        sp = subprocess.Popen(sub_cmd, stdout=sfout, stderr=subprocess.STDOUT)
+                    else:
+                        sp = subprocess.Popen(sub_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    processes.append(("sub", tname, si, sp))
                 # stagger starts
                 time.sleep(args.stagger_ms / 1000.0)
             # optionally start a single ffplay against the first topic if requested
@@ -150,18 +191,15 @@ def main() -> None:
                 ffplay_cmd = build_ffplay_cmd(ffplay, sub_url)
                 print("Starting player:")
                 print(" ", " ".join(ffplay_cmd))
-                play_proc = subprocess.Popen(ffplay_cmd)
+                if log_dir:
+                    pfn = os.path.join(log_dir, f"ffplay_{first_topic}.log")
+                    pf = open(pfn, "wb")
+                    play_proc = subprocess.Popen(ffplay_cmd, stdout=pf, stderr=subprocess.STDOUT)
+                else:
+                    play_proc = subprocess.Popen(ffplay_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # wait for any publisher to exit or until interrupted
+            # wait until interrupted
             while True:
-                any_running = False
-                for tname, p in processes:
-                    if p.poll() is None:
-                        any_running = True
-                        break
-                if not any_running:
-                    print("all publishers exited")
-                    break
                 time.sleep(0.5)
         else:
             # single publisher mode: pick first topic
