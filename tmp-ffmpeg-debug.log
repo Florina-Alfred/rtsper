@@ -1,0 +1,154 @@
+ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers
+  built with gcc 12 (Ubuntu 12.3.0-1ubuntu1~22.04.2)
+  configuration: --prefix=/home/linuxbrew/.linuxbrew/Cellar/ffmpeg/8.0.1 --enable-shared --enable-pthreads --enable-version3 --cc=gcc-12 --host-cflags= --host-ldflags= --enable-ffplay --enable-gnutls --enable-gpl --enable-libaom --enable-libaribb24 --enable-libbluray --enable-libdav1d --enable-libharfbuzz --enable-libjxl --enable-libmp3lame --enable-libopus --enable-librav1e --enable-librist --enable-librubberband --enable-libsnappy --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtesseract --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libxvid --enable-lzma --enable-libfontconfig --enable-libfreetype --enable-frei0r --enable-libass --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libspeex --enable-libsoxr --enable-libzmq --enable-libzimg --disable-libjack --disable-indev=jack
+  libavutil      60.  8.100 / 60.  8.100
+  libavcodec     62. 11.100 / 62. 11.100
+  libavformat    62.  3.100 / 62.  3.100
+  libavdevice    62.  1.100 / 62.  1.100
+  libavfilter    11.  4.100 / 11.  4.100
+  libswscale      9.  1.100 /  9.  1.100
+  libswresample   6.  1.100 /  6.  1.100
+Splitting the commandline.
+Reading option '-loglevel' ... matched as option 'loglevel' (set logging level) with argument 'debug'.
+Reading option '-re' ... matched as option 're' (read input at native frame rate; equivalent to -readrate 1) with argument '1'.
+Reading option '-stream_loop' ... matched as option 'stream_loop' (set number of times input stream shall be looped) with argument '-1'.
+Reading option '-i' ... matched as input url with argument 'docs/test_footage.mp4'.
+Reading option '-t' ... matched as option 't' (stop transcoding after specified duration) with argument '5'.
+Reading option '-c' ... matched as option 'c' (select encoder/decoder ('copy' to copy stream without reencoding)) with argument 'copy'.
+Reading option '-f' ... matched as option 'f' (force container format (auto-detected otherwise)) with argument 'rtsp'.
+Reading option '-rtsp_transport' ... matched as AVOption 'rtsp_transport' with argument 'tcp'.
+Reading option 'rtsp://localhost:9191/topic-debug1' ... matched as output url.
+Finished splitting the commandline.
+Parsing a group of options: global .
+Applying option loglevel (set logging level) with argument debug.
+Successfully parsed a group of options.
+Parsing a group of options: input url docs/test_footage.mp4.
+Applying option re (read input at native frame rate; equivalent to -readrate 1) with argument 1.
+Applying option stream_loop (set number of times input stream shall be looped) with argument -1.
+Successfully parsed a group of options.
+Opening an input file: docs/test_footage.mp4.
+[AVFormatContext @ 0x62bbc9548580] Opening 'docs/test_footage.mp4' for reading
+[file @ 0x62bbc9548d80] Setting default whitelist 'file,crypto,data'
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Format mov,mp4,m4a,3gp,3g2,mj2 probed with size=2048 and score=100
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] ISO: File Type Major Brand: isom
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Unknown dref type 0x206c7275 size 12
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Processing st: 0, edit list 0 - media time: 2002, duration: 45410640
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Offset DTS by 2002 to make first pts zero.
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Setting codecpar->delay to 2 for stream st: 0
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Unknown dref type 0x206c7275 size 12
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Processing st: 1, edit list 0 - media time: 1024, duration: 90821616
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] drop a frame at curr_cts: 0 @ 0
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] Before avformat_find_stream_info() pos: 1898914168 bytes read:1330279 seeks:1 nb_streams:2
+[h264 @ 0x62bbc9549b00] nal_unit_type: 7(SPS), nal_ref_idc: 3
+[h264 @ 0x62bbc9549b00] Decoding VUI
+[h264 @ 0x62bbc9549b00] nal_unit_type: 8(PPS), nal_ref_idc: 3
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 64, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft32_asm_float_fma3 - type: fft_float, len: 32, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 64, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft32_asm_float_fma3 - type: fft_float, len: 32, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_pfa_3xM_inv_float_c - type: mdct_float, len: 96, factors[2]: [3, any], flags: [unaligned, out_of_place, inv_only]
+        fft16_ns_float_fma3 - type: fft_float, len: 16, factor: 2, flags: [aligned, inplace, out_of_place, preshuf]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 120, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft_pfa_15xM_asm_float_avx2 - type: fft_float, len: 60, factors[2]: [15, 2], flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+            fft4_fwd_asm_float_sse2 - type: fft_float, len: 4, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 128, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft_sr_asm_float_fma3 - type: fft_float, len: 64, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 480, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft_pfa_15xM_asm_float_avx2 - type: fft_float, len: 240, factors[2]: [15, 2], flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+            fft16_asm_float_fma3 - type: fft_float, len: 16, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 512, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft_sr_asm_float_fma3 - type: fft_float, len: 256, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_pfa_3xM_inv_float_c - type: mdct_float, len: 768, factors[2]: [3, any], flags: [unaligned, out_of_place, inv_only]
+        fft_sr_ns_float_fma3 - type: fft_float, len: 128, factor: 2, flags: [aligned, inplace, out_of_place, preshuf]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 960, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft_pfa_15xM_asm_float_avx2 - type: fft_float, len: 480, factors[2]: [15, 2], flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+            fft32_asm_float_fma3 - type: fft_float, len: 32, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_inv_float_avx2 - type: mdct_float, len: 1024, factors[2]: [2, any], flags: [aligned, out_of_place, inv_only]
+        fft_sr_asm_float_fma3 - type: fft_float, len: 512, factor: 2, flags: [aligned, inplace, out_of_place, preshuf, asm_call]
+Transform tree:
+    mdct_fwd_float_c - type: mdct_float, len: 1024, factors[2]: [2, any], flags: [unaligned, out_of_place, fwd_only]
+        fft_sr_ns_float_fma3 - type: fft_float, len: 512, factor: 2, flags: [aligned, inplace, out_of_place, preshuf]
+[h264 @ 0x62bbc9549b00] nal_unit_type: 7(SPS), nal_ref_idc: 3
+[h264 @ 0x62bbc9549b00] Decoding VUI
+[h264 @ 0x62bbc9549b00] nal_unit_type: 8(PPS), nal_ref_idc: 3
+[h264 @ 0x62bbc9549b00] nal_unit_type: 6(SEI), nal_ref_idc: 0
+[h264 @ 0x62bbc9549b00] nal_unit_type: 5(IDR), nal_ref_idc: 3
+[h264 @ 0x62bbc9549b00] Format yuv420p chosen by get_format().
+[h264 @ 0x62bbc9549b00] Reinit context to 1920x1088, pix_fmt: yuv420p
+[h264 @ 0x62bbc9549b00] no picture 
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] demuxer injecting skip 1024 / discard 0
+[aac @ 0x62bbc954ecc0] skip 1024 / discard 0 samples due to side data
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] All info found
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x62bbc9548580] After avformat_find_stream_info() pos: 140582 bytes read:1503558 seeks:2 frames:3
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'docs/test_footage.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf62.3.100
+  Duration: 00:31:32.12, start: 0.000000, bitrate: 8028 kb/s
+  Stream #0:0[0x1](eng), 2, 1/24000: Video: h264 (High), 1 reference frame (avc1 / 0x31637661), yuv420p(progressive, left), 1920x1080 [SAR 1:1 DAR 16:9], 0/1, 8021 kb/s, 23.95 fps, 23.98 tbr, 24k tbn (default)
+    Metadata:
+      handler_name    : ?Mainconcept Video Media Handler
+      vendor_id       : [0][0][0][0]
+  Stream #0:1[0x2](eng), 1, 1/48000: Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 2 kb/s (default)
+    Metadata:
+      handler_name    : #Mainconcept MP4 Sound Media Handler
+      vendor_id       : [0][0][0][0]
+Successfully opened the file.
+Parsing a group of options: output url rtsp://localhost:9191/topic-debug1.
+Applying option t (stop transcoding after specified duration) with argument 5.
+Applying option c (select encoder/decoder ('copy' to copy stream without reencoding)) with argument copy.
+Applying option f (force container format (auto-detected otherwise)) with argument rtsp.
+Successfully parsed a group of options.
+Opening an output file: rtsp://localhost:9191/topic-debug1.
+[out#0/rtsp @ 0x62bbc96c2200] No explicit maps, mapping streams automatically...
+[vost#0:0/copy @ 0x62bbc9783980] Created video stream from input stream 0:0
+[aost#0:1/copy @ 0x62bbc954e140] Created audio stream from input stream 0:1
+Successfully opened the file.
+Stream mapping:
+  Stream #0:0 -> #0:0 (copy)
+  Stream #0:1 -> #0:1 (copy)
+[tcp @ 0x62bbc96f9900] No default whitelist set
+[tcp @ 0x62bbc96f9900] Original list of addresses:
+[tcp @ 0x62bbc96f9900] Address ::1 port 9191
+[tcp @ 0x62bbc96f9900] Address 127.0.0.1 port 9191
+[tcp @ 0x62bbc96f9900] Interleaved list of addresses:
+[tcp @ 0x62bbc96f9900] Address ::1 port 9191
+[tcp @ 0x62bbc96f9900] Address 127.0.0.1 port 9191
+[tcp @ 0x62bbc96f9900] Starting connection attempt to ::1 port 9191
+[tcp @ 0x62bbc96f9900] Successfully connected to ::1 port 9191
+[rtsp @ 0x62bbc954c680] SDP:
+v=0
+o=- 0 0 IN IP6 ::1
+s=No Name
+c=IN IP6 ::1
+t=0 0
+a=tool:libavformat 62.3.100
+m=video 0 RTP/AVP 96
+b=AS:8021
+a=framerate:23.976
+a=rtpmap:96 H264/90000
+a=fmtp:96 packetization-mode=1; sprop-parameter-sets=Z2QAKKzZQHgCJ+XARAAAD6QAAu4APGDGWA==,aOvhcsiw; profile-level-id=640028
+a=control:streamid=0
+m=audio 0 RTP/AVP 97
+b=AS:2
+a=rtpmap:97 MPEG4-GENERIC/48000/2
+a=fmtp:97 profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3; config=119056E500
+a=control:streamid=1
+
+[out#0/rtsp @ 0x62bbc96c2200] Could not write header (incorrect codec parameters ?): Server returned 400 Bad Request
+[AVIOContext @ 0x62bbc9551180] Statistics: 1503558 bytes read, 2 seeks
+Conversion failed!
+
+Exiting with exit code -808465656
