@@ -138,6 +138,11 @@ cd contrib/docker-compose
 docker compose -f docker-compose-multi.yml up
 ```
 
+Grafana dashboard (example)
+
+![Grafana dashboard](docs/grafana_dashboard.png)
+
+
 2) Verify cluster and status (optional):
 
 ```sh
