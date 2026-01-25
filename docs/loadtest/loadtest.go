@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -11,200 +10,120 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-// Loadtest tool (duplicate source in docs for convenience).
-// See docs/loadtest/README.md for usage.
+// Simplified loadtest: start publishers and subscribers using ffmpeg.
+// This version focuses on clarity: it starts processes, writes simple per-stream
+// logs, and performs a basic graceful shutdown on SIGINT/SIGTERM.
 
 func main() {
-	var (
-		count      = flag.Int("count", 100, "number of topics to create")
-		filePath   = flag.String("file", "docs/test_footage.mp4", "path to source media file")
-		pubAddr    = flag.String("publish", "localhost:9191", "publish server host:port (no scheme)")
-		subAddr    = flag.String("subscribe", "localhost:9192", "subscribe server host:port (no scheme)")
-		startDelay = flag.Duration("delay", 50*time.Millisecond, "delay between starting each pair")
-		outDir     = flag.String("out", "loadtest-logs", "directory to write per-stream logs")
-		duration   = flag.Duration("duration", 0, "duration to run the test; 0 means run until interrupted")
-	)
+	count := flag.Int("count", 100, "number of topics to create")
+	filePath := flag.String("file", "docs/test_footage.mp4", "path to source media file")
+	pubAddr := flag.String("publish", "localhost:9191", "publish server host:port")
+	subAddr := flag.String("subscribe", "localhost:9192", "subscribe server host:port")
+	delay := flag.Duration("delay", 50*time.Millisecond, "delay between starting each pair")
+	outDir := flag.String("out", "loadtest-logs", "directory to write per-stream logs")
+	duration := flag.Duration("duration", 0, "optional run duration; 0 = until interrupted")
 	flag.Parse()
 
 	if *count <= 0 {
 		log.Fatalf("invalid count: %d", *count)
 	}
 
-	// Ensure ffmpeg exists
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		log.Fatalf("ffmpeg not found in PATH: %v", err)
 	}
 
-	// Resolve input file path by walking up from the current working
-	// directory and testing several candidate locations. This lets the
-	// program be run from the repo root or from docs/loadtest.
-	cwd, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("cannot get working dir: %v", err)
-	}
-
-	tried := []string{}
-	found := ""
-
-	// Also consider absolute/relative as provided first
-	candidates := []string{*filePath}
-	if abs, err := filepath.Abs(*filePath); err == nil {
-		candidates = append(candidates, abs)
-	}
-
-	// Walk up a few directory levels and try both the provided path and the basename
-	cur := cwd
-	for i := 0; i < 6; i++ {
-		candidates = append(candidates, filepath.Join(cur, *filePath))
-		candidates = append(candidates, filepath.Join(cur, filepath.Base(*filePath)))
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			break
-		}
-		cur = parent
-	}
-
-	for _, c := range candidates {
-		if c == "" {
-			continue
-		}
-		tried = append(tried, c)
-		if _, err := os.Stat(c); err == nil {
-			found = c
-			break
-		}
-	}
-
-	if found == "" {
-		log.Fatalf("input file not found (%s); tried: %v", *filePath, tried)
-	}
-	*filePath = found
+	// Find input file by checking a few likely paths (supports running from
+	// repo root or docs/loadtest).
+	*filePath = findFile(*filePath)
 	log.Printf("using input file: %s", *filePath)
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		log.Fatalf("cannot create out dir: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	var wg sync.WaitGroup
-	procs := make([]*exec.Cmd, 0, *count*2)
-	mu := sync.Mutex{}
+	var procs []*exec.Cmd
+	var mu sync.Mutex
+	var started int32
+	var failed int32
 
-	startPair := func(i int) {
+	start := time.Now()
+	for i := 1; i <= *count; i++ {
 		topic := "topic" + strconv.Itoa(i)
 
-		// Publisher: loop the input file and push to publish endpoint
+		// Publisher
 		pubURL := fmt.Sprintf("rtsp://%s/%s", *pubAddr, topic)
-		pubLog := filepath.Join(*outDir, fmt.Sprintf("pub_%s.log", topic))
-		pubCmd := exec.CommandContext(ctx, ffmpegPath,
-			"-re",
-			"-stream_loop", "-1",
-			"-i", *filePath,
-			"-c", "copy",
-			"-f", "rtsp",
-			"-rtsp_transport", "tcp",
-			pubURL,
+		pubLog := filepath.Join(*outDir, "pub_"+topic+".log")
+		pubCmd := exec.Command(ffmpeg,
+			"-re", "-stream_loop", "-1", "-i", *filePath,
+			"-c", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", pubURL,
 		)
 		pubF, _ := os.Create(pubLog)
 		pubCmd.Stdout = pubF
 		pubCmd.Stderr = pubF
 
-		// Subscriber: pull from subscribe endpoint and discard
+		// Subscriber
 		subURL := fmt.Sprintf("rtsp://%s/%s", *subAddr, topic)
-		subLog := filepath.Join(*outDir, fmt.Sprintf("sub_%s.log", topic))
-		subCmd := exec.CommandContext(ctx, ffmpegPath,
-			"-rtsp_transport", "tcp",
-			"-i", subURL,
-			"-f", "null",
-			"-",
-		)
+		subLog := filepath.Join(*outDir, "sub_"+topic+".log")
+		subCmd := exec.Command(ffmpeg, "-rtsp_transport", "tcp", "-i", subURL, "-f", "null", "-")
 		subF, _ := os.Create(subLog)
 		subCmd.Stdout = subF
 		subCmd.Stderr = subF
 
-		// Start publisher
 		if err := pubCmd.Start(); err != nil {
-			log.Printf("failed to start publisher for %s: %v", topic, err)
-			return
+			log.Printf("publisher %s start failed: %v", topic, err)
+			atomic.AddInt32(&failed, 1)
+			pubF.Close()
+			subF.Close()
+			continue
 		}
 
-		// Start subscriber
 		if err := subCmd.Start(); err != nil {
-			log.Printf("failed to start subscriber for %s: %v", topic, err)
-			// try to kill publisher we just started
+			log.Printf("subscriber %s start failed: %v", topic, err)
+			atomic.AddInt32(&failed, 1)
 			_ = pubCmd.Process.Kill()
-			return
+			pubF.Close()
+			subF.Close()
+			continue
 		}
 
 		mu.Lock()
 		procs = append(procs, pubCmd, subCmd)
 		mu.Unlock()
 
+		atomic.AddInt32(&started, 2)
 		wg.Add(2)
-		go func(cmd *exec.Cmd, f *os.File) {
-			defer wg.Done()
-			err := cmd.Wait()
-			if err != nil {
-				log.Printf("process exited with error: %v", err)
-			}
-			f.Close()
-		}(pubCmd, pubF)
+		go waitAndClose(pubCmd, pubF, &wg)
+		go waitAndClose(subCmd, subF, &wg)
 
-		go func(cmd *exec.Cmd, f *os.File) {
-			defer wg.Done()
-			err := cmd.Wait()
-			if err != nil {
-				log.Printf("process exited with error: %v", err)
-			}
-			f.Close()
-		}(subCmd, subF)
-	}
+		time.Sleep(*delay)
 
-	log.Printf("starting %d publisher+subscriber pairs (publishing to %s, subscribing from %s)", *count, *pubAddr, *subAddr)
-
-	// Start pairs with small delay to avoid hammering scheduler instantly
-	for i := 1; i <= *count; i++ {
-		select {
-		case <-ctx.Done():
+		// If duration is set and elapsed, stop starting new pairs
+		if *duration > 0 && time.Since(start) > *duration {
 			break
-		default:
 		}
-		startPair(i)
-		time.Sleep(*startDelay)
 	}
 
-	// Optionally stop after duration
-	if *duration > 0 {
-		go func() {
-			select {
-			case <-time.After(*duration):
-				log.Printf("duration elapsed: cancelling")
-				cancel()
-			case <-sigs:
-				cancel()
-			}
-		}()
-	}
+	log.Printf("started %d processes, %d failures", started, failed)
 
-	// Wait for signal
+	// Wait for signal or until all processes exit
 	select {
 	case <-sigs:
 		log.Printf("signal received: shutting down")
-		cancel()
-	case <-ctx.Done():
+	default:
+		// continue to wait for wg below
 	}
 
-	// Give processes a moment to exit gracefully, then kill any remaining
+	// Graceful shutdown: give processes a short time, then kill remaining
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -213,17 +132,57 @@ func main() {
 
 	select {
 	case <-done:
-		log.Printf("all processes exited")
+		log.Printf("all child processes exited")
 	case <-time.After(5 * time.Second):
-		log.Printf("timeout waiting for processes, killing remaining")
+		log.Printf("timeout; killing remaining processes")
 		mu.Lock()
-		for _, cmd := range procs {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
+		for _, c := range procs {
+			if c.Process != nil {
+				_ = c.Process.Kill()
 			}
 		}
 		mu.Unlock()
 	}
 
-	log.Printf("loadtest finished")
+	log.Printf("finished: started=%d failed=%d", started, failed)
+}
+
+func waitAndClose(cmd *exec.Cmd, f *os.File, wg *sync.WaitGroup) {
+	defer wg.Done()
+	err := cmd.Wait()
+	if err != nil {
+		log.Printf("process %s exited: %v", cmd.String(), err)
+	}
+	f.Close()
+}
+
+// findFile looks for path in current and parent directories and returns the first match.
+func findFile(p string) string {
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		if _, err := os.Stat(abs); err == nil {
+			return abs
+		}
+	}
+	cwd, _ := os.Getwd()
+	cur := cwd
+	for i := 0; i < 6; i++ {
+		cand := filepath.Join(cur, p)
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+		cand = filepath.Join(cur, filepath.Base(p))
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	log.Fatalf("input file not found: %s", p)
+	return p
 }
