@@ -30,6 +30,8 @@ func main() {
 	subAddr := flag.String("subscribe", "localhost:9192", "subscribe server host:port")
 	delay := flag.Duration("delay", 50*time.Millisecond, "delay between starting each pair")
 	pubsubDelay := flag.Duration("pubsub-delay", 200*time.Millisecond, "delay between starting publisher and subscriber for the same topic")
+	phase := flag.String("phase", "both", "which phase to run: publish, subscribe, both")
+	graceAfterPublish := flag.Duration("grace-after-publish", 2*time.Second, "grace period after publishing before starting subscribers when phase=both")
 	outDir := flag.String("out", "loadtest-logs", "directory to write per-stream logs")
 	duration := flag.Duration("duration", 0, "optional run duration; 0 = until interrupted")
 	flag.Parse()
@@ -61,11 +63,22 @@ func main() {
 	var started int32
 	var failed int32
 
-	start := time.Now()
+	_ = time.Now()
+
+	// Two-phase mode: optionally start all publishers first, wait, then start subscribers.
+	// Prepare command lists for publishers and subscribers.
+	type pair struct {
+		topic  string
+		pubCmd *exec.Cmd
+		pubF   *os.File
+		subCmd *exec.Cmd
+		subF   *os.File
+	}
+
+	pairs := make([]*pair, 0, *count)
 	for i := 1; i <= *count; i++ {
 		topic := "topic" + strconv.Itoa(i)
 
-		// Publisher
 		pubURL := fmt.Sprintf("rtsp://%s/%s", *pubAddr, topic)
 		pubLog := filepath.Join(*outDir, "pub_"+topic+".log")
 		pubCmd := exec.Command(ffmpeg,
@@ -73,53 +86,78 @@ func main() {
 			"-c", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", pubURL,
 		)
 		pubF, _ := os.Create(pubLog)
-		pubCmd.Stdout = pubF
-		pubCmd.Stderr = pubF
 
-		// Prepare subscriber command but start it after a short pubsub delay
 		subURL := fmt.Sprintf("rtsp://%s/%s", *subAddr, topic)
 		subLog := filepath.Join(*outDir, "sub_"+topic+".log")
 		subCmd := exec.Command(ffmpeg, "-rtsp_transport", "tcp", "-i", subURL, "-f", "null", "-")
 		subF, _ := os.Create(subLog)
-		subCmd.Stdout = subF
-		subCmd.Stderr = subF
 
-		if err := pubCmd.Start(); err != nil {
-			log.Printf("publisher %s start failed: %v", topic, err)
-			atomic.AddInt32(&failed, 1)
-			pubF.Close()
-			subF.Close()
-			continue
+		pairs = append(pairs, &pair{topic: topic, pubCmd: pubCmd, pubF: pubF, subCmd: subCmd, subF: subF})
+	}
+
+	// Helper to start a list of commands with delay and track them
+	startList := func(cmds []*exec.Cmd, files []*os.File) {
+		for idx, c := range cmds {
+			if c == nil {
+				continue
+			}
+			if err := c.Start(); err != nil {
+				log.Printf("start failed: %v", err)
+				atomic.AddInt32(&failed, 1)
+				files[idx].Close()
+				continue
+			}
+			mu.Lock()
+			procs = append(procs, c)
+			mu.Unlock()
+			atomic.AddInt32(&started, 1)
+			wg.Add(1)
+			go func(cmd *exec.Cmd, f *os.File) {
+				defer wg.Done()
+				err := cmd.Wait()
+				if err != nil {
+					log.Printf("process %s exited: %v", cmd.String(), err)
+				}
+				f.Close()
+			}(c, files[idx])
+			time.Sleep(*delay)
+		}
+	}
+
+	// If phase is publish or both, start all publishers first
+	if *phase == "publish" || *phase == "both" {
+		pubCmds := make([]*exec.Cmd, 0, len(pairs))
+		pubFiles := make([]*os.File, 0, len(pairs))
+		for _, p := range pairs {
+			pubCmds = append(pubCmds, p.pubCmd)
+			pubFiles = append(pubFiles, p.pubF)
+		}
+		log.Printf("starting %d publishers", len(pubCmds))
+		startList(pubCmds, pubFiles)
+	}
+
+	// If both, wait a grace period before starting subscribers
+	if *phase == "both" {
+		log.Printf("waiting %s before starting subscribers", pubsubDelay)
+		time.Sleep(*graceAfterPublish)
+	}
+
+	// If phase is subscribe or both, start subscribers now
+	if *phase == "subscribe" || *phase == "both" {
+		subCmds := make([]*exec.Cmd, 0, len(pairs))
+		subFiles := make([]*os.File, 0, len(pairs))
+		for _, p := range pairs {
+			subCmds = append(subCmds, p.subCmd)
+			subFiles = append(subFiles, p.subF)
 		}
 
-		// wait a short time so the publisher can register on the server
-		time.Sleep(*pubsubDelay)
-
-		if err := subCmd.Start(); err != nil {
-			log.Printf("subscriber %s start failed: %v", topic, err)
-			atomic.AddInt32(&failed, 1)
-			// try to stop publisher we started earlier
-			_ = pubCmd.Process.Kill()
-			pubF.Close()
-			subF.Close()
-			continue
+		// If duration was set, wait for that duration then proceed to shutdown
+		if *duration > 0 {
+			log.Printf("running for %s", *duration)
+			time.Sleep(*duration)
 		}
-
-		mu.Lock()
-		procs = append(procs, pubCmd, subCmd)
-		mu.Unlock()
-
-		atomic.AddInt32(&started, 2)
-		wg.Add(2)
-		go waitAndClose(pubCmd, pubF, &wg)
-		go waitAndClose(subCmd, subF, &wg)
-
-		time.Sleep(*delay)
-
-		// If duration is set and elapsed, stop starting new pairs
-		if *duration > 0 && time.Since(start) > *duration {
-			break
-		}
+		log.Printf("starting %d subscribers", len(subCmds))
+		startList(subCmds, subFiles)
 	}
 
 	log.Printf("started %d processes, %d failures", started, failed)
