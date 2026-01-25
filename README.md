@@ -1,5 +1,5 @@
 
-# rtsper — Simple RTSP relay / distributor (MVP)
+# rtsper - Simple RTSP relay / distributor (MVP)
 
 Minimal RTSP relay server focused on relaying RTSP streams from a single publisher per topic to multiple subscribers.
 
@@ -14,8 +14,8 @@ The server accepts one publisher per topic and fans out the stream to many subsc
 ASCII overview:
 
 ```
-                         RTSP (publish)                      RTSP (play)
 
+   RTSP (publish)                                         RTSP (play)
   +-------------+                                   +----------------------+ 
   |  Publisher  |    -----------------------------> |        rtsper        |
   |  (ffmpeg)   |    rtsp://host:9191/<topic>       |   (relay & mux)      |
@@ -81,13 +81,17 @@ Notes:
   ./rtsper -enable-udp -udp-port-start 5000 -udp-port-end 5999
   ```
 
-- Example publish/play commands (UDP):
+- Example publish (UDP):
 
   ```sh
-  # Publisher
-  ffmpeg ... -f rtsp -rtsp_transport udp rtsp://localhost:9191/topic1
+  ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
+    -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+    -f rtsp -rtsp_transport udp rtsp://localhost:9191/topic1
+  ```
 
-  # Subscriber
+- Example play (UDP):
+
+  ```sh
   ffplay -rtsp_transport udp rtsp://localhost:9192/topic1
   ```
 
@@ -118,7 +122,7 @@ ffmpeg -f v4l2 -framerate 30 -video_size 640x480 -i /dev/video0 \
 ffplay -rtsp_transport tcp rtsp://localhost:9192/topic1
 ```
 
-Use `localhost` when running locally.
+
 
 Clustered mode note
 
@@ -167,8 +171,6 @@ ffplay -rtsp_transport tcp rtsp://localhost:9196/topic2
 docker compose -f docker-compose-multi.yml down
 ```
 
-Use `localhost` when running locally.
-
 ## Configuration file
 
 - Pass a JSON config file using `-config /path/to/config.json`.
@@ -188,10 +190,5 @@ Use `localhost` when running locally.
   "PublisherGracePeriod": "5s"
 }
 ```
-
-## Development
-
-- Run tests: `go test ./... -v`
-- Format code: `gofmt -w .`
 
 <!-- License removed from repository -->
