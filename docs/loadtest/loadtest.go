@@ -25,6 +25,7 @@ func main() {
 	pubAddr := flag.String("publish", "localhost:9191", "publish server host:port")
 	subAddr := flag.String("subscribe", "localhost:9192", "subscribe server host:port")
 	delay := flag.Duration("delay", 50*time.Millisecond, "delay between starting each pair")
+	pubsubDelay := flag.Duration("pubsub-delay", 200*time.Millisecond, "delay between starting publisher and subscriber for the same topic")
 	outDir := flag.String("out", "loadtest-logs", "directory to write per-stream logs")
 	duration := flag.Duration("duration", 0, "optional run duration; 0 = until interrupted")
 	flag.Parse()
@@ -71,7 +72,7 @@ func main() {
 		pubCmd.Stdout = pubF
 		pubCmd.Stderr = pubF
 
-		// Subscriber
+		// Prepare subscriber command but start it after a short pubsub delay
 		subURL := fmt.Sprintf("rtsp://%s/%s", *subAddr, topic)
 		subLog := filepath.Join(*outDir, "sub_"+topic+".log")
 		subCmd := exec.Command(ffmpeg, "-rtsp_transport", "tcp", "-i", subURL, "-f", "null", "-")
@@ -87,9 +88,13 @@ func main() {
 			continue
 		}
 
+		// wait a short time so the publisher can register on the server
+		time.Sleep(*pubsubDelay)
+
 		if err := subCmd.Start(); err != nil {
 			log.Printf("subscriber %s start failed: %v", topic, err)
 			atomic.AddInt32(&failed, 1)
+			// try to stop publisher we started earlier
 			_ = pubCmd.Process.Kill()
 			pubF.Close()
 			subF.Close()
