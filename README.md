@@ -14,18 +14,19 @@ The server accepts one publisher per topic and fans out the stream to many subsc
 ASCII overview:
 
 ```
-                        RTSP (publish)                         RTSP (play)
-  +-------------+   ------------------------------>   +----------------------+   ------------------------------>
-  |  Publisher  |   rtsp://host:9191/<topic>         |        rtsper        |   rtsp://host:9192/<topic>
-  |  (ffmpeg)   |                                       |   (relay & mux)     |
-  +-------------+                                       +----------+-----------+
-                                                                  |
-                                                                  |  fans out
-                                                                  v
-                             +----------------+   +----------------+   +----------------+
-                             |  Subscriber 1  |   |  Subscriber 2  |   |  Subscriber N  |
-                             |   (ffplay)     |   |   (ffplay)     |   |   (ffplay)     |
-                             +----------------+   +----------------+   +----------------+
+                         RTSP (publish)                      RTSP (play)
+
+  +-------------+   ---------------------------------->   +----------------------+ 
+  |  Publisher  |   rtsp://host:9191/<topic>             |        rtsper         |   rtsp://host:9192/<topic>
+  |  (ffmpeg)   |                                        |   (relay & mux)      |
+  +-------------+                                        +----------------------+ 
+                                                          |
+                                                          |  fans out
+                                                          v
+                      +----------------+  +----------------+  +----------------+
+                      |  Subscriber 1  |  |  Subscriber 2  |  |  Subscriber N  |
+                      |   (ffplay)     |  |   (ffplay)     |  |   (ffplay)     |
+                      +----------------+  +----------------+  +----------------+
 
 Notes:
 - rtsper accepts one publisher per topic and relays to many subscribers.
