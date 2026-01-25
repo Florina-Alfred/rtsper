@@ -18,7 +18,7 @@ Prerequisites
 Files
 -----
 
-- `cmd/loadtest` — the Go program (binary entrypoint). This repository already contains the source.
+`docs/loadtest` — the Go program (binary entrypoint). A self-contained copy of the tool is included in this folder for convenience.
 
 Usage
 -----
@@ -26,7 +26,7 @@ Usage
 Build the tool:
 
 ```sh
-go build -o bin/loadtest ./cmd/loadtest
+go build -o bin/loadtest ./docs/loadtest
 ```
 
 Basic run (100 pairs, default):

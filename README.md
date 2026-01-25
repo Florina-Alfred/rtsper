@@ -209,7 +209,7 @@ docker compose -f docker-compose-multi.yml down
 Load testing helper
 -------------------
 
-See `docs/loadtest/README.md` for a small `ffmpeg`-based load test tool (`cmd/loadtest`) that starts multiple publisher+subscriber pairs using `docs/test_footage.mp4` by default. Build with `go build -o bin/loadtest ./cmd/loadtest` and run from the repository root.
+See `docs/loadtest/README.md` for a small `ffmpeg`-based load test tool (`docs/loadtest`) that starts multiple publisher+subscriber pairs using `docs/test_footage.mp4` by default. Build with `go build -o bin/loadtest ./docs/loadtest` and run from the repository root.
 
 ## Configuration file
 
