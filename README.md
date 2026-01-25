@@ -17,16 +17,20 @@ ASCII overview:
                          RTSP (publish)                      RTSP (play)
 
   +-------------+   ---------------------------------->   +----------------------+ 
-  |  Publisher  |   rtsp://host:9191/<topic>             |        rtsper         |   rtsp://host:9192/<topic>
+  |  Publisher  |   rtsp://host:9191/<topic>             |        rtsper         |
   |  (ffmpeg)   |                                        |   (relay & mux)      |
   +-------------+                                        +----------------------+ 
-                                                          |
-                                                          |  fans out
-                                                          v
-                      +----------------+  +----------------+  +----------------+
-                      |  Subscriber 1  |  |  Subscriber 2  |  |  Subscriber N  |
-                      |   (ffplay)     |  |   (ffplay)     |  |   (ffplay)     |
-                      +----------------+  +----------------+  +----------------+
+                                                           |
+                                                           |  rtsp://host:9192/<topic>  fans out
+                                                           |
+                                          ------------------------------------------
+                                        |                    |                    |
+                                        |                    |                    |
+                                        v                    v                    v
+                      +----------------+   +----------------+   +----------------+
+                      |  Subscriber 1  |   |  Subscriber 2  |   |  Subscriber N  |
+                      |   (ffplay)     |   |   (ffplay)     |   |   (ffplay)     |
+                      +----------------+   +----------------+   +----------------+
 
 Notes:
 - rtsper accepts one publisher per topic and relays to many subscribers.
