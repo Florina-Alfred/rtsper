@@ -16,13 +16,13 @@ ASCII overview:
 ```
                          RTSP (publish)                      RTSP (play)
 
-  +-------------+   ----------------------------->  +----------------------+ 
-  |  Publisher  |   rtsp://host:9191/<topic>        |        rtsper        |
-  |  (ffmpeg)   |                                   |   (relay & mux)      |
   +-------------+                                   +----------------------+ 
-                                                           |
-                                                           |  rtsp://host:9192/<topic>
-                                                           |  fans out
+  |  Publisher  |    -----------------------------> |        rtsper        |
+  |  (ffmpeg)   |    rtsp://host:9191/<topic>       |   (relay & mux)      |
+  +-------------+                                   +----------------------+ 
+                                                         |
+                                                         |  rtsp://host:9192/<topic>
+                                                         |  fans out
                                     ------------------------------------------
                                     |                    |                    |
                                     |                    |                    |
