@@ -206,6 +206,11 @@ gst-launch-1.0 rtspsrc location=rtsp://localhost:9196/topic1 protocols=tcp ! rtp
 docker compose -f docker-compose-multi.yml down
 ```
 
+Load testing helper
+-------------------
+
+See `docs/loadtest/README.md` for a small `ffmpeg`-based load test tool (`cmd/loadtest`) that starts multiple publisher+subscriber pairs using `docs/test_footage.mp4` by default. Build with `go build -o bin/loadtest ./cmd/loadtest` and run from the repository root.
+
 ## Configuration file
 
 - Pass a JSON config file using `-config /path/to/config.json`.
