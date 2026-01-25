@@ -50,6 +50,12 @@ func main() {
 	*filePath = findFile(*filePath)
 	log.Printf("using input file: %s", *filePath)
 
+	// Resolve outDir to absolute path and create it
+	absOut, err := filepath.Abs(*outDir)
+	if err != nil {
+		log.Fatalf("invalid out dir: %v", err)
+	}
+	*outDir = absOut
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		log.Fatalf("cannot create out dir: %v", err)
 	}
@@ -85,12 +91,20 @@ func main() {
 			"-re", "-stream_loop", "-1", "-i", *filePath,
 			"-c", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", pubURL,
 		)
-		pubF, _ := os.Create(pubLog)
+		pubF, err := os.Create(pubLog)
+		if err != nil {
+			log.Printf("warning: cannot create pub log %s: %v", pubLog, err)
+			pubF = nil
+		}
 
 		subURL := fmt.Sprintf("rtsp://%s/%s", *subAddr, topic)
 		subLog := filepath.Join(*outDir, "sub_"+topic+".log")
 		subCmd := exec.Command(ffmpeg, "-rtsp_transport", "tcp", "-i", subURL, "-f", "null", "-")
-		subF, _ := os.Create(subLog)
+		subF, err := os.Create(subLog)
+		if err != nil {
+			log.Printf("warning: cannot create sub log %s: %v", subLog, err)
+			subF = nil
+		}
 
 		pairs = append(pairs, &pair{topic: topic, pubCmd: pubCmd, pubF: pubF, subCmd: subCmd, subF: subF})
 	}
@@ -104,7 +118,9 @@ func main() {
 			if err := c.Start(); err != nil {
 				log.Printf("start failed: %v", err)
 				atomic.AddInt32(&failed, 1)
-				files[idx].Close()
+				if files[idx] != nil {
+					files[idx].Close()
+				}
 				continue
 			}
 			mu.Lock()
@@ -117,8 +133,14 @@ func main() {
 				err := cmd.Wait()
 				if err != nil {
 					log.Printf("process %s exited: %v", cmd.String(), err)
+					// if we have a logfile, print its tail to help debugging
+					if f != nil {
+						printLogTail(f.Name(), 80)
+					}
 				}
-				f.Close()
+				if f != nil {
+					f.Close()
+				}
 			}(c, files[idx])
 			time.Sleep(*delay)
 		}
@@ -301,4 +323,39 @@ func summarizeLogs(outDir string, top int) {
 		log.Printf("[%d] %d occurrences: %s", i+1, arr[i].v, arr[i].k)
 	}
 	log.Printf("inspect %s for per-stream details", outDir)
+}
+
+func printLogTail(path string, lines int) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	// Read file into memory (ok for short tails)
+	info, err := f.Stat()
+	if err != nil {
+		return
+	}
+	size := info.Size()
+	// If file is large, read last ~64KB
+	var start int64 = 0
+	if size > 65536 {
+		start = size - 65536
+	}
+	_, err = f.Seek(start, io.SeekStart)
+	if err != nil {
+		return
+	}
+	scanner := bufio.NewScanner(f)
+	buf := make([]string, 0, lines)
+	for scanner.Scan() {
+		buf = append(buf, scanner.Text())
+		if len(buf) > lines {
+			buf = buf[len(buf)-lines:]
+		}
+	}
+	log.Printf("--- tail %s (last %d lines) ---", path, lines)
+	for _, l := range buf {
+		log.Printf("%s", l)
+	}
 }
