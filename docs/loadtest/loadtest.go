@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -150,6 +154,9 @@ func main() {
 	}
 
 	log.Printf("finished: started=%d failed=%d", started, failed)
+
+	// Summarize common ffmpeg error lines from logs
+	summarizeLogs(*outDir, 10)
 }
 
 func waitAndClose(cmd *exec.Cmd, f *os.File, wg *sync.WaitGroup) {
@@ -190,4 +197,70 @@ func findFile(p string) string {
 	}
 	log.Fatalf("input file not found: %s", p)
 	return p
+}
+
+// summarizeLogs scans log files in outDir for common error lines and prints a small report.
+func summarizeLogs(outDir string, top int) {
+	files, err := filepath.Glob(filepath.Join(outDir, "*.log"))
+	if err != nil || len(files) == 0 {
+		log.Printf("no log files found in %s to summarize", outDir)
+		return
+	}
+
+	counts := map[string]int{}
+	totalErrors := 0
+	filesScanned := 0
+
+	for _, f := range files {
+		fi, err := os.Open(f)
+		if err != nil {
+			continue
+		}
+		filesScanned++
+		r := bufio.NewReader(fi)
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil && err != io.EOF {
+				break
+			}
+			l := strings.TrimSpace(line)
+			low := strings.ToLower(l)
+			if strings.Contains(low, "error") || strings.Contains(low, "failed") || strings.Contains(low, "refused") || strings.Contains(low, "not found") {
+				// Normalize by removing variable parts (timestamps) - crude but helpful
+				// Keep the whole line for now
+				counts[l]++
+				totalErrors++
+			}
+			if err == io.EOF {
+				break
+			}
+		}
+		fi.Close()
+	}
+
+	if totalErrors == 0 {
+		log.Printf("no error lines found in %d log files", filesScanned)
+		return
+	}
+
+	// Sort by count
+	type kv struct {
+		k string
+		v int
+	}
+	arr := make([]kv, 0, len(counts))
+	for k, v := range counts {
+		arr = append(arr, kv{k, v})
+	}
+	sort.Slice(arr, func(i, j int) bool { return arr[i].v > arr[j].v })
+
+	log.Printf("log summary: scanned=%d total_error_lines=%d unique=%d top=%d", filesScanned, totalErrors, len(counts), top)
+	limit := top
+	if limit > len(arr) {
+		limit = len(arr)
+	}
+	for i := 0; i < limit; i++ {
+		log.Printf("[%d] %d occurrences: %s", i+1, arr[i].v, arr[i].k)
+	}
+	log.Printf("inspect %s for per-stream details", outDir)
 }
