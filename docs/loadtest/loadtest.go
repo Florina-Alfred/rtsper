@@ -32,6 +32,10 @@ func main() {
 	pubsubDelay := flag.Duration("pubsub-delay", 200*time.Millisecond, "delay between starting publisher and subscriber for the same topic")
 	phase := flag.String("phase", "both", "which phase to run: publish, subscribe, both")
 	graceAfterPublish := flag.Duration("grace-after-publish", 2*time.Second, "grace period after publishing before starting subscribers when phase=both")
+	concurrency := flag.Int("concurrency", 10, "maximum concurrent ffmpeg starts per phase")
+	retries := flag.Int("retries", 2, "retry attempts for starting a process that exits quickly")
+	backoff := flag.Duration("backoff", 500*time.Millisecond, "backoff between retries")
+	healthWindow := flag.Duration("health-window", 2*time.Second, "time to wait after starting a process to consider it healthy")
 	outDir := flag.String("out", "loadtest-logs", "directory to write per-stream logs")
 	duration := flag.Duration("duration", 0, "optional run duration; 0 = until interrupted")
 	flag.Parse()
@@ -109,41 +113,75 @@ func main() {
 		pairs = append(pairs, &pair{topic: topic, pubCmd: pubCmd, pubF: pubF, subCmd: subCmd, subF: subF})
 	}
 
-	// Helper to start a list of commands with delay and track them
-	startList := func(cmds []*exec.Cmd, files []*os.File) {
+	// startWithHealth starts a single command and watches for early exit.
+	// It returns nil when the process is considered healthy (ran past healthWindow),
+	// or an error when it failed to start or exited quickly.
+	startWithHealth := func(cmd *exec.Cmd, f *os.File) error {
+		if err := cmd.Start(); err != nil {
+			if f != nil {
+				f.Close()
+			}
+			return fmt.Errorf("start failed: %w", err)
+		}
+
+		exitCh := make(chan error, 1)
+		go func() {
+			exitCh <- cmd.Wait()
+			if f != nil {
+				f.Close()
+			}
+		}()
+
+		select {
+		case err := <-exitCh:
+			return fmt.Errorf("exited quickly: %w", err)
+		case <-time.After(*healthWindow):
+			// healthy
+			mu.Lock()
+			procs = append(procs, cmd)
+			mu.Unlock()
+			atomic.AddInt32(&started, 1)
+			return nil
+		}
+	}
+
+	// startListConcurrent starts commands with a semaphore-limited concurrency,
+	// applies retries and backoff on early exit.
+	startListConcurrent := func(cmds []*exec.Cmd, files []*os.File) {
+		sem := make(chan struct{}, *concurrency)
+		var innerWg sync.WaitGroup
 		for idx, c := range cmds {
 			if c == nil {
 				continue
 			}
-			if err := c.Start(); err != nil {
-				log.Printf("start failed: %v", err)
-				atomic.AddInt32(&failed, 1)
-				if files[idx] != nil {
-					files[idx].Close()
-				}
-				continue
-			}
-			mu.Lock()
-			procs = append(procs, c)
-			mu.Unlock()
-			atomic.AddInt32(&started, 1)
-			wg.Add(1)
+			sem <- struct{}{}
+			innerWg.Add(1)
 			go func(cmd *exec.Cmd, f *os.File) {
-				defer wg.Done()
-				err := cmd.Wait()
-				if err != nil {
-					log.Printf("process %s exited: %v", cmd.String(), err)
-					// if we have a logfile, print its tail to help debugging
-					if f != nil {
-						printLogTail(f.Name(), 80)
+				defer innerWg.Done()
+				defer func() { <-sem }()
+				var ok bool
+				for attempt := 0; attempt <= *retries; attempt++ {
+					err := startWithHealth(cmd, f)
+					if err == nil {
+						ok = true
+						break
+					}
+					log.Printf("process %s failed on attempt %d: %v", cmd.String(), attempt+1, err)
+					atomic.AddInt32(&failed, 1)
+					if attempt < *retries {
+						time.Sleep(*backoff)
 					}
 				}
-				if f != nil {
-					f.Close()
+				if !ok {
+					// final failure; ensure file closed
+					if f != nil {
+						f.Close()
+					}
 				}
 			}(c, files[idx])
 			time.Sleep(*delay)
 		}
+		innerWg.Wait()
 	}
 
 	// If phase is publish or both, start all publishers first
@@ -154,8 +192,8 @@ func main() {
 			pubCmds = append(pubCmds, p.pubCmd)
 			pubFiles = append(pubFiles, p.pubF)
 		}
-		log.Printf("starting %d publishers", len(pubCmds))
-		startList(pubCmds, pubFiles)
+		log.Printf("starting %d publishers (concurrency=%d retries=%d)", len(pubCmds), *concurrency, *retries)
+		startListConcurrent(pubCmds, pubFiles)
 	}
 
 	// If both, wait a grace period before starting subscribers
@@ -178,8 +216,8 @@ func main() {
 			log.Printf("running for %s", *duration)
 			time.Sleep(*duration)
 		}
-		log.Printf("starting %d subscribers", len(subCmds))
-		startList(subCmds, subFiles)
+		log.Printf("starting %d subscribers (concurrency=%d retries=%d)", len(subCmds), *concurrency, *retries)
+		startListConcurrent(subCmds, subFiles)
 	}
 
 	log.Printf("started %d processes, %d failures", started, failed)
