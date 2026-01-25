@@ -20,9 +20,9 @@ ASCII overview:
   |  Publisher  |   rtsp://host:9191/<topic>             |        rtsper         |
   |  (ffmpeg)   |                                        |   (relay & mux)      |
   +-------------+                                        +----------------------+ 
-                                                           |
-                                                           |  rtsp://host:9192/<topic>  fans out
-                                                           |
+                                                            |
+                                                            |  rtsp://host:9192/<topic>
+                                                            |  fans out
                                           ------------------------------------------
                                         |                    |                    |
                                         |                    |                    |
