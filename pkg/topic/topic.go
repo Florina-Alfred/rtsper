@@ -101,7 +101,9 @@ func (m *Manager) RegisterPublisher(ctx context.Context, name string, pub *Publi
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.publisherCount >= m.cfg.MaxPublishers {
+	// If MaxPublishers is set (>0) enforce the global publishers limit.
+	// A value of 0 means unlimited publishers.
+	if m.cfg.MaxPublishers > 0 && m.publisherCount >= m.cfg.MaxPublishers {
 		return ErrMaxPublishers
 	}
 	if t, ok := m.topics[name]; ok {

@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,12 +42,38 @@ func loadConfig(path string) (topic.Config, error) {
 	return cfg, nil
 }
 
+// readTotalMemoryMB attempts to read total system memory in MB from /proc/meminfo.
+// Returns an error if the read/parse fails. This is a best-effort helper and
+// only used when auto-sizing is requested.
+func readTotalMemoryMB() (int, error) {
+	b, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, err
+	}
+	// Look for a line like: MemTotal:       16384256 kB
+	s := string(b)
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "MemTotal:") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				return 0, fmt.Errorf("unexpected meminfo format")
+			}
+			kb, err := strconv.Atoi(fields[1])
+			if err != nil {
+				return 0, err
+			}
+			return kb / 1024, nil
+		}
+	}
+	return 0, fmt.Errorf("MemTotal not found in /proc/meminfo")
+}
+
 func main() {
 	var (
 		publishPort            = flag.Int("publish-port", 9191, "RTSP publisher port")
 		subscribePort          = flag.Int("subscribe-port", 9192, "RTSP subscriber port")
 		adminPort              = flag.Int("admin-port", 8080, "Admin HTTP port")
-		maxPublishers          = flag.Int("max-publishers", 5, "Max concurrent publishers")
+		maxPublishers          = flag.Int("max-publishers", 0, "Max concurrent publishers (0 = unlimited)")
 		maxSubscribersPerTopic = flag.Int("max-subscribers-per-topic", 5, "Max subscribers per topic")
 		publisherQueueSize     = flag.Int("publisher-queue-size", 1024, "Per-topic inbound queue size")
 		subscriberQueueSize    = flag.Int("subscriber-queue-size", 256, "Per-subscriber queue size")
@@ -57,6 +86,10 @@ func main() {
 		otelEndpoint = flag.String("otel-endpoint", "", "OTLP/gRPC collector endpoint (host:port). Empty to disable OTLP init.")
 		// allow explicit disabling of OTEL even when endpoint default is set
 		disableOtel = flag.Bool("disable-otel", false, "Disable pushing metrics to OTLP collector (overrides --otel-endpoint)")
+		// auto-sizing options
+		autoMaxPublishers = flag.Bool("auto-max-publishers", false, "Auto-calculate max publishers based on CPU/memory")
+		publishersPerCPU  = flag.Int("publishers-per-cpu", 10, "Publishers per CPU used when auto-sizing")
+		perPublisherMB    = flag.Int("publisher-mb", 50, "Estimated MB per publisher used when auto-sizing")
 		// UDP options
 		enableUDP         = flag.Bool("enable-udp", false, "Enable UDP RTP/RTCP listeners")
 		publisherUDPBase  = flag.Int("publisher-udp-base", 0, "Publisher UDP base port (RTP). RTCP = base+1")
@@ -240,6 +273,35 @@ func main() {
 	_ = proxyIOTo
 
 	// create manager with final config
+	// If requested, auto-calculate a sensible MaxPublishers based on
+	// available CPU and memory. This uses a simple heuristic:
+	//   cpuLimit = NumCPU * publishersPerCPU
+	//   memLimit = totalMemMB / perPublisherMB
+	// and picks the minimum of the two. If the result is < 1, fall back
+	// to 1 to avoid a 0-sized limit.
+	if *autoMaxPublishers {
+		numCPU := runtime.NumCPU()
+		// Best-effort memory read from /proc/meminfo (Linux). If it fails,
+		// fall back to a large value so memory doesn't become the limiting factor.
+		totalMemMB := 0
+		if v, err := readTotalMemoryMB(); err == nil {
+			totalMemMB = v
+		} else {
+			totalMemMB = 1024 * 16 // assume 16 GB if we cannot read meminfo
+		}
+		cpuLimit := numCPU * (*publishersPerCPU)
+		memLimit := totalMemMB / (*perPublisherMB)
+		computed := cpuLimit
+		if memLimit < computed {
+			computed = memLimit
+		}
+		if computed < 1 {
+			computed = 1
+		}
+		cfg.MaxPublishers = computed
+		plog.Info("auto-max-publishers enabled: cpu=%d cores mem=%dMB -> max_publishers=%d", numCPU, totalMemMB, cfg.MaxPublishers)
+	}
+
 	m := topic.NewManager(cfg)
 
 	// start admin server
